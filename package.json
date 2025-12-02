@@ -1,0 +1,53 @@
+{
+  "name": "llm-skills",
+  "version": "1.0.0",
+  "description": "An Electron-based application with Claude Skills-like functionality supporting multiple LLM APIs",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "npm run build && electron . --dev",
+    "start": "electron .",
+    "build": "npm run build:main && npm run build:renderer && npm run copy:assets",
+    "build:main": "tsc",
+    "build:renderer": "esbuild src/renderer/app.ts --bundle --outfile=dist/renderer/app.js --platform=browser --target=es2020",
+    "copy:assets": "mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/ && cp src/renderer/styles.css dist/renderer/",
+    "watch": "npm run watch:main & npm run watch:renderer",
+    "watch:main": "tsc --watch",
+    "watch:renderer": "esbuild src/renderer/app.ts --bundle --outfile=dist/renderer/app.js --platform=browser --target=es2020 --watch",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "package": "electron-builder"
+  },
+  "keywords": [
+    "electron",
+    "llm",
+    "skills",
+    "ai",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "esbuild": "^0.19.12",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1"
+  },
+  "build": {
+    "appId": "com.llmskills.app",
+    "productName": "LLM Skills",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/renderer/index.html",
+      "src/renderer/styles.css",
+      "package.json"
+    ]
+  }
+}

@@ -231,7 +231,12 @@ function createParameterItem(param: SkillParameter, index: number): HTMLDivEleme
   div.innerHTML = `
     <div class="parameter-header">
       <strong>Parameter ${index + 1}</strong>
-      <button class="btn-danger btn-small" onclick="removeParameter(${index})">Remove</button>
+      <button class="btn-icon danger" onclick="removeParameter(${index})" title="Remove Parameter">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+      </button>
     </div>
     <div class="parameter-fields">
       <input type="text" placeholder="Name" value="${param.name || ''}" data-field="name">
@@ -278,7 +283,10 @@ function renderExecutionInputs(parameters: SkillParameter[]): void {
 // Event listeners
 function setupEventListeners(): void {
   document.getElementById('newSkillBtn')!.addEventListener('click', () => showEditor());
-  document.getElementById('settingsBtn')!.addEventListener('click', showSettings);
+  // document.getElementById('settingsBtn')!.addEventListener('click', showSettings); // Removed in new UI
+  
+  document.getElementById('sidebarToggleBtn')!.addEventListener('click', toggleSidebar);
+  document.querySelector('.user-profile')!.addEventListener('click', showSettings);
   
   document.getElementById('saveSkillBtn')!.addEventListener('click', saveSkill);
   document.getElementById('deleteSkillBtn')!.addEventListener('click', deleteSkill);
@@ -524,6 +532,13 @@ function escapeHtml(text: string): string {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function toggleSidebar(): void {
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) {
+    sidebar.classList.toggle('collapsed');
+  }
 }
 
 // Initialize when DOM is ready

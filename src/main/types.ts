@@ -95,3 +95,14 @@ export interface SkillExecutionResult {
   };
 }
 
+export interface MCPServerConfig {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
+export interface MCPToolCall {
+  name: string;
+  arguments: Record<string, any>;
+}
+

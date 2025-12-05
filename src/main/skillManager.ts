@@ -3,6 +3,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { Skill, SkillExecutionResult, Tool } from './types';
 import { musicDownloadTool } from './tools/musicTool';
+import { jobSearchTool } from './tools/jobSearchTool';
 
 export class SkillManager {
   private skillsPath: string;
@@ -20,6 +21,7 @@ export class SkillManager {
 
   private registerTools(): void {
     this.tools.set(musicDownloadTool.id, musicDownloadTool);
+    this.tools.set(jobSearchTool.id, jobSearchTool);
   }
 
   private loadSkills(): void {
@@ -73,63 +75,6 @@ export class SkillManager {
   private getDefaultSkills(): Omit<Skill, 'id' | 'createdAt' | 'updatedAt'>[] {
     return [
       {
-        name: 'Code Review',
-        description: 'Review code and provide feedback on improvements, bugs, and best practices',
-        prompt: 'You are an experienced code reviewer. Review the following code and provide constructive feedback:\n\n{code}\n\nFocus on:\n1. Potential bugs\n2. Code quality and readability\n3. Performance optimizations\n4. Best practices\n5. Security concerns',
-        parameters: [
-          {
-            name: 'code',
-            type: 'string',
-            description: 'The code to review',
-            required: true
-          }
-        ],
-        temperature: 0.3,
-        maxTokens: 2000
-      },
-      {
-        name: 'Text Summarization',
-        description: 'Summarize long texts into concise summaries',
-        prompt: 'Summarize the following text in a concise manner:\n\n{text}\n\nProvide a summary that captures the key points.',
-        parameters: [
-          {
-            name: 'text',
-            type: 'string',
-            description: 'The text to summarize',
-            required: true
-          }
-        ],
-        temperature: 0.5,
-        maxTokens: 500
-      },
-      {
-        name: 'Language Translation',
-        description: 'Translate text between languages',
-        prompt: 'Translate the following text from {sourceLang} to {targetLang}:\n\n{text}',
-        parameters: [
-          {
-            name: 'text',
-            type: 'string',
-            description: 'The text to translate',
-            required: true
-          },
-          {
-            name: 'sourceLang',
-            type: 'string',
-            description: 'Source language',
-            required: true
-          },
-          {
-            name: 'targetLang',
-            type: 'string',
-            description: 'Target language',
-            required: true
-          }
-        ],
-        temperature: 0.3,
-        maxTokens: 1000
-      },
-      {
         name: 'Music Downloader',
         description: 'Find and download music based on a description',
         prompt: 'You are a music assistant. Help the user find and download music matching their description.\n\nUser Request: {description}',
@@ -144,6 +89,22 @@ export class SkillManager {
         temperature: 0.7,
         maxTokens: 1000,
         tools: ['music_download']
+      },
+      {
+        name: 'Job Search',
+        description: 'Search for job listings on LinkedIn, Indeed, or Glassdoor based on location and time posted',
+        prompt: 'You are a job search assistant. Help the user find job listings matching their criteria.\\n\\nUser Request: {query}',
+        parameters: [
+          {
+            name: 'query',
+            type: 'string',
+            description: 'Job search query including location, platform, and other preferences',
+            required: true
+          }
+        ],
+        temperature: 0.5,
+        maxTokens: 2000,
+        tools: ['job_search']
       }
     ];
   }

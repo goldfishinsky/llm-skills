@@ -10,8 +10,22 @@ export interface Skill {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  apiKey?: string; // Optional skill-specific API key
+  tools?: string[]; // List of tool IDs enabled for this skill
   createdAt: number;
   updatedAt: number;
+}
+
+export interface Tool {
+  id: string;
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, any>;
+    required: string[];
+  };
+  execute: (params: any, onProgress?: (message: string) => void) => Promise<any>;
 }
 
 export interface SkillParameter {
@@ -67,6 +81,7 @@ export interface Settings {
   defaultProvider: string;
   defaultModel: string;
   theme: 'light' | 'dark' | 'auto';
+  jamendoApiKey?: string;
 }
 
 export interface SkillExecutionResult {

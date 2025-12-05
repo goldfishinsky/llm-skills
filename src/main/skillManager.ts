@@ -1,18 +1,25 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import { Skill, SkillExecutionResult } from './types';
-import { LLMManager } from './llmManager';
+import { Skill, SkillExecutionResult, Tool } from './types';
+import { musicDownloadTool } from './tools/musicTool';
 
 export class SkillManager {
   private skillsPath: string;
   private skills: Map<string, Skill>;
+  private tools: Map<string, Tool>;
 
   constructor() {
     const userDataPath = app.getPath('userData');
     this.skillsPath = path.join(userDataPath, 'skills.json');
     this.skills = new Map();
+    this.tools = new Map();
+    this.registerTools();
     this.loadSkills();
+  }
+
+  private registerTools(): void {
+    this.tools.set(musicDownloadTool.id, musicDownloadTool);
   }
 
   private loadSkills(): void {
@@ -23,6 +30,7 @@ export class SkillManager {
         skillsArray.forEach(skill => {
           this.skills.set(skill.id, skill);
         });
+        this.ensureDefaultSkills();
       } else {
         // Initialize with default skills
         this.initializeDefaultSkills();
@@ -43,8 +51,27 @@ export class SkillManager {
     }
   }
 
+  private ensureDefaultSkills(): void {
+    const defaultSkills = this.getDefaultSkills();
+    const existingNames = new Set(Array.from(this.skills.values()).map(s => s.name));
+    
+    defaultSkills.forEach(skillData => {
+      if (!existingNames.has(skillData.name)) {
+        console.log(`Adding missing default skill: ${skillData.name}`);
+        this.createSkill(skillData);
+      }
+    });
+  }
+
   private initializeDefaultSkills(): void {
-    const defaultSkills: Omit<Skill, 'id' | 'createdAt' | 'updatedAt'>[] = [
+    const defaultSkills = this.getDefaultSkills();
+    defaultSkills.forEach(skillData => {
+      this.createSkill(skillData);
+    });
+  }
+
+  private getDefaultSkills(): Omit<Skill, 'id' | 'createdAt' | 'updatedAt'>[] {
+    return [
       {
         name: 'Code Review',
         description: 'Review code and provide feedback on improvements, bugs, and best practices',
@@ -101,12 +128,24 @@ export class SkillManager {
         ],
         temperature: 0.3,
         maxTokens: 1000
+      },
+      {
+        name: 'Music Downloader',
+        description: 'Find and download music based on a description',
+        prompt: 'You are a music assistant. Help the user find and download music matching their description.\n\nUser Request: {description}',
+        parameters: [
+          {
+            name: 'description',
+            type: 'string',
+            description: 'Description of the music to download',
+            required: true
+          }
+        ],
+        temperature: 0.7,
+        maxTokens: 1000,
+        tools: ['music_download']
       }
     ];
-
-    defaultSkills.forEach(skillData => {
-      this.createSkill(skillData);
-    });
   }
 
   getAllSkills(): Skill[] {
@@ -158,12 +197,17 @@ export class SkillManager {
     return deleted;
   }
 
-  async executeSkill(skillId: string, params: Record<string, any>, llmManager: LLMManager): Promise<SkillExecutionResult> {
+  async executeSkill(
+    skillId: string,
+    params: Record<string, any>,
+    llmManager: any,
+    onProgress?: (message: string) => void
+  ): Promise<SkillExecutionResult> {
     const skill = this.skills.get(skillId);
     if (!skill) {
       return {
         success: false,
-        error: `Skill with id ${skillId} not found`
+        error: `Skill not found: ${skillId}`
       };
     }
 
@@ -190,20 +234,55 @@ export class SkillManager {
       const provider = skill.provider || settings.defaultProvider;
       const model = skill.model || settings.defaultModel;
 
+      // Prepare tools if enabled
+      let systemPrompt = '';
+      if (skill.tools && skill.tools.length > 0) {
+        const enabledTools = skill.tools.map(id => this.tools.get(id)).filter(t => t !== undefined) as Tool[];
+        if (enabledTools.length > 0) {
+          systemPrompt = `\nYou have access to the following tools:\n${enabledTools.map(t => 
+            `- ${t.name}: ${t.description}\n  Parameters: ${JSON.stringify(t.parameters)}`
+          ).join('\n')}\n\nTo use a tool, respond with ONLY a JSON object in this format:\n{"tool": "tool_name", "parameters": {...}}\n`;
+        }
+      }
+
       // Execute with LLM
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: finalPrompt }
+      ];
+
       const response = await llmManager.chat(
         provider,
         model,
-        [{ role: 'user', content: finalPrompt }],
+        messages,
         {
           temperature: skill.temperature,
           maxTokens: skill.maxTokens
-        }
+        },
+        skill.apiKey
       );
+
+      // Check for tool execution
+      let result = response.content;
+      try {
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const toolCall = JSON.parse(jsonMatch[0]);
+          if (toolCall.tool && toolCall.parameters) {
+            const tool = Array.from(this.tools.values()).find(t => t.name === toolCall.tool);
+            if (tool) {
+              const toolResult = await tool.execute(toolCall.parameters, onProgress);
+              result = `Tool Execution Result: ${toolResult}`;
+            }
+          }
+        }
+      } catch (e) {
+        // Not a tool call or failed to parse, treat as normal text
+      }
 
       return {
         success: true,
-        result: response.content,
+        result: result,
         usage: response.usage
       };
     } catch (error) {

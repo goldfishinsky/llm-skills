@@ -16,6 +16,8 @@ interface Skill {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  apiKey?: string;
+  tools?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -41,6 +43,7 @@ interface Settings {
   defaultProvider: string;
   defaultModel: string;
   theme: 'light' | 'dark' | 'auto';
+  jamendoApiKey?: string;
 }
 
 interface SkillExecutionResult {
@@ -55,8 +58,8 @@ interface SkillExecutionResult {
 }
 
 // State management
+// State management
 let currentSkill: Skill | null = null;
-let currentView: 'welcome' | 'editor' | 'execution' = 'welcome';
 let skills: Skill[] = [];
 let providers: LLMProvider[] = [];
 let settings: Settings | null = null;
@@ -67,12 +70,15 @@ async function init(): Promise<void> {
   await loadSettings();
   await loadSkills();
   setupEventListeners();
+  
+  // Show dashboard by default
+  showDashboard();
 }
 
 // Load data
 async function loadSkills(): Promise<void> {
   skills = await window.electronAPI.skill.getAll();
-  renderSkillsList();
+  renderSkillsDashboard();
 }
 
 async function loadProviders(): Promise<void> {
@@ -84,71 +90,59 @@ async function loadSettings(): Promise<void> {
 }
 
 // Render functions
-function renderSkillsList(): void {
-  const skillsList = document.getElementById('skillsList')!;
-  skillsList.innerHTML = '';
+function renderSkillsDashboard(): void {
+  const skillsGrid = document.getElementById('skillsGrid')!;
+  skillsGrid.innerHTML = '';
 
   if (skills.length === 0) {
-    skillsList.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); font-size: 13px;">No skills yet. Create one to get started.</div>';
+    skillsGrid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">
+        <p>No skills yet. Click "New Skill" to create one.</p>
+      </div>
+    `;
     return;
   }
 
   skills.forEach(skill => {
-    const skillItem = document.createElement('div');
-    skillItem.className = 'skill-item';
-    skillItem.innerHTML = `
-      <h3>${escapeHtml(skill.name)}</h3>
-      <p>${escapeHtml(skill.description)}</p>
+    const card = document.createElement('div');
+    card.className = 'skill-card';
+    card.innerHTML = `
+      <div class="skill-card-header">
+        <h3>${escapeHtml(skill.name)}</h3>
+      </div>
+      <p>${escapeHtml(skill.description || 'No description')}</p>
+      <div class="skill-card-actions">
+        <button class="btn btn-primary execute-skill-btn" data-id="${skill.id}">Execute</button>
+        <button class="btn btn-secondary edit-skill-btn" data-id="${skill.id}">Edit</button>
+      </div>
     `;
-    skillItem.addEventListener('click', () => showSkillMenu(skill));
-    skillsList.appendChild(skillItem);
+    
+    // Add event listeners for buttons
+    card.querySelector('.execute-skill-btn')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showExecution(skill);
+    });
+    
+    card.querySelector('.edit-skill-btn')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showEditor(skill);
+    });
+
+    skillsGrid.appendChild(card);
   });
 }
 
-function showSkillMenu(skill: Skill): void {
-  const menu = document.createElement('div');
-  menu.className = 'context-menu';
-  menu.style.position = 'fixed';
-  menu.style.zIndex = '1000';
-  
-  const options = [
-    { label: 'Execute', action: () => showExecution(skill) },
-    { label: 'Edit', action: () => showEditor(skill) },
-  ];
-
-  const html = options.map(opt => `<div class="menu-item">${opt.label}</div>`).join('');
-  menu.innerHTML = html;
-  
-  document.body.appendChild(menu);
-  
-  const items = menu.querySelectorAll('.menu-item');
-  items.forEach((item, index) => {
-    item.addEventListener('click', () => {
-      options[index].action();
-      document.body.removeChild(menu);
-    });
-  });
-
-  const rect = (event as MouseEvent).target ? ((event as MouseEvent).target as HTMLElement).getBoundingClientRect() : { right: 0, top: 0 };
-  menu.style.left = rect.right + 'px';
-  menu.style.top = rect.top + 'px';
-
-  setTimeout(() => {
-    const clickOutside = (e: MouseEvent) => {
-      if (!menu.contains(e.target as Node)) {
-        document.body.removeChild(menu);
-        document.removeEventListener('click', clickOutside);
-      }
-    };
-    document.addEventListener('click', clickOutside);
-  }, 0);
+function showDashboard(): void {
+  document.getElementById('skillsDashboard')!.classList.remove('hidden');
+  document.getElementById('skillEditor')!.classList.add('hidden');
+  document.getElementById('skillExecution')!.classList.add('hidden');
+  currentSkill = null;
 }
 
 function showEditor(skill: Skill | null = null): void {
   currentSkill = skill;
-  currentView = 'editor';
 
-  document.getElementById('welcomeScreen')!.classList.add('hidden');
+  document.getElementById('skillsDashboard')!.classList.add('hidden');
   document.getElementById('skillExecution')!.classList.add('hidden');
   document.getElementById('skillEditor')!.classList.remove('hidden');
 
@@ -156,8 +150,9 @@ function showEditor(skill: Skill | null = null): void {
     (document.getElementById('skillName') as HTMLInputElement).value = skill.name;
     (document.getElementById('skillDescription') as HTMLTextAreaElement).value = skill.description;
     (document.getElementById('skillPrompt') as HTMLTextAreaElement).value = skill.prompt;
-    (document.getElementById('skillTemperature') as HTMLInputElement).value = String(skill.temperature || 0.7);
-    (document.getElementById('skillMaxTokens') as HTMLInputElement).value = String(skill.maxTokens || 2000);
+    (document.getElementById('skillTemperature') as HTMLInputElement).value = String(skill.temperature ?? 0.7);
+    (document.getElementById('skillMaxTokens') as HTMLInputElement).value = String(skill.maxTokens ?? 2000);
+    (document.getElementById('skillApiKey') as HTMLInputElement).value = skill.apiKey || '';
     
     renderProviderSelect();
     (document.getElementById('skillProvider') as HTMLSelectElement).value = skill.provider || settings!.defaultProvider;
@@ -165,13 +160,14 @@ function showEditor(skill: Skill | null = null): void {
     (document.getElementById('skillModel') as HTMLSelectElement).value = skill.model || settings!.defaultModel;
     
     renderParameters(skill.parameters);
-    (document.getElementById('deleteSkillBtn') as HTMLButtonElement).style.display = 'block';
+    (document.getElementById('deleteSkillBtn') as HTMLButtonElement).style.display = 'flex';
   } else {
     (document.getElementById('skillName') as HTMLInputElement).value = '';
     (document.getElementById('skillDescription') as HTMLTextAreaElement).value = '';
     (document.getElementById('skillPrompt') as HTMLTextAreaElement).value = '';
     (document.getElementById('skillTemperature') as HTMLInputElement).value = '0.7';
     (document.getElementById('skillMaxTokens') as HTMLInputElement).value = '2000';
+    (document.getElementById('skillApiKey') as HTMLInputElement).value = '';
     
     renderProviderSelect();
     (document.getElementById('skillProvider') as HTMLSelectElement).value = settings!.defaultProvider;
@@ -184,9 +180,8 @@ function showEditor(skill: Skill | null = null): void {
 
 function showExecution(skill: Skill): void {
   currentSkill = skill;
-  currentView = 'execution';
 
-  document.getElementById('welcomeScreen')!.classList.add('hidden');
+  document.getElementById('skillsDashboard')!.classList.add('hidden');
   document.getElementById('skillEditor')!.classList.add('hidden');
   document.getElementById('skillExecution')!.classList.remove('hidden');
 
@@ -283,20 +278,17 @@ function renderExecutionInputs(parameters: SkillParameter[]): void {
 // Event listeners
 function setupEventListeners(): void {
   document.getElementById('newSkillBtn')!.addEventListener('click', () => showEditor());
-  // document.getElementById('settingsBtn')!.addEventListener('click', showSettings); // Removed in new UI
-  
-  document.getElementById('sidebarToggleBtn')!.addEventListener('click', toggleSidebar);
-  document.querySelector('.user-profile')!.addEventListener('click', showSettings);
+  document.getElementById('userProfileBtn')!.addEventListener('click', showSettings);
   
   document.getElementById('saveSkillBtn')!.addEventListener('click', saveSkill);
   document.getElementById('deleteSkillBtn')!.addEventListener('click', deleteSkill);
-  document.getElementById('closeEditorBtn')!.addEventListener('click', closeEditor);
+  document.getElementById('closeEditorBtn')!.addEventListener('click', showDashboard);
   
   document.getElementById('addParameterBtn')!.addEventListener('click', addParameter);
   document.getElementById('skillProvider')!.addEventListener('change', updateModelSelect);
   
   document.getElementById('executeBtn')!.addEventListener('click', executeSkill);
-  document.getElementById('closeExecutionBtn')!.addEventListener('click', closeExecution);
+  document.getElementById('closeExecutionBtn')!.addEventListener('click', showDashboard);
   
   document.getElementById('closeSettingsBtn')!.addEventListener('click', closeSettings);
   document.getElementById('saveSettingsBtn')!.addEventListener('click', saveSettings);
@@ -313,15 +305,22 @@ async function saveSkill(): Promise<void> {
 
   const parameters = getParametersFromForm();
   
+  const provider = (document.getElementById('skillProvider') as HTMLSelectElement).value;
+  const model = (document.getElementById('skillModel') as HTMLSelectElement).value;
+  const temperature = parseFloat((document.getElementById('skillTemperature') as HTMLInputElement).value);
+  const maxTokens = parseInt((document.getElementById('skillMaxTokens') as HTMLInputElement).value);
+  const apiKey = (document.getElementById('skillApiKey') as HTMLInputElement).value;
+
   const skillData = {
     name,
     description: (document.getElementById('skillDescription') as HTMLTextAreaElement).value.trim(),
     prompt: (document.getElementById('skillPrompt') as HTMLTextAreaElement).value.trim(),
     parameters,
-    provider: (document.getElementById('skillProvider') as HTMLSelectElement).value,
-    model: (document.getElementById('skillModel') as HTMLSelectElement).value,
-    temperature: parseFloat((document.getElementById('skillTemperature') as HTMLInputElement).value),
-    maxTokens: parseInt((document.getElementById('skillMaxTokens') as HTMLInputElement).value)
+    provider,
+    model,
+    temperature,
+    maxTokens,
+    apiKey: apiKey || undefined, // Only include if not empty
   };
 
   try {
@@ -331,7 +330,7 @@ async function saveSkill(): Promise<void> {
       await window.electronAPI.skill.create(skillData);
     }
     await loadSkills();
-    closeEditor();
+    showDashboard();
   } catch (error) {
     alert('Error saving skill: ' + (error as Error).message);
   }
@@ -344,25 +343,11 @@ async function deleteSkill(): Promise<void> {
     try {
       await window.electronAPI.skill.delete(currentSkill.id);
       await loadSkills();
-      closeEditor();
+      showDashboard();
     } catch (error) {
       alert('Error deleting skill: ' + (error as Error).message);
     }
   }
-}
-
-function closeEditor(): void {
-  document.getElementById('skillEditor')!.classList.add('hidden');
-  document.getElementById('welcomeScreen')!.classList.remove('hidden');
-  currentSkill = null;
-  currentView = 'welcome';
-}
-
-function closeExecution(): void {
-  document.getElementById('skillExecution')!.classList.add('hidden');
-  document.getElementById('welcomeScreen')!.classList.remove('hidden');
-  currentSkill = null;
-  currentView = 'welcome';
 }
 
 function addParameter(): void {
@@ -423,13 +408,26 @@ async function executeSkill(): Promise<void> {
   executeBtn.disabled = true;
   executeBtn.textContent = 'Executing...';
 
+  // Show result area and clear previous content
+  const resultElement = document.getElementById('executionResult')!;
+  const resultContent = document.getElementById('resultContent')!;
+  resultElement.classList.remove('hidden');
+  resultContent.textContent = '⏳ Starting execution...';
+
+  // Listen for progress updates
+  const progressListener = (_event: any, message: string) => {
+    resultContent.textContent += '\n' + message;
+  };
+  window.electronAPI.onProgress(progressListener);
+
   try {
     const result: SkillExecutionResult = await window.electronAPI.skill.execute(currentSkill.id, params);
     
-    document.getElementById('executionResult')!.classList.remove('hidden');
+    // Remove progress listener
+    window.electronAPI.removeProgressListener(progressListener);
     
     if (result.success) {
-      document.getElementById('resultContent')!.textContent = result.result || '';
+      resultContent.textContent = result.result || '';
       if (result.usage) {
         document.getElementById('resultUsage')!.innerHTML = `
           <strong>Token Usage:</strong> 
@@ -441,12 +439,12 @@ async function executeSkill(): Promise<void> {
         document.getElementById('resultUsage')!.textContent = '';
       }
     } else {
-      document.getElementById('resultContent')!.textContent = 'Error: ' + result.error;
+      resultContent.textContent = 'Error: ' + result.error;
       document.getElementById('resultUsage')!.textContent = '';
     }
   } catch (error) {
-    document.getElementById('executionResult')!.classList.remove('hidden');
-    document.getElementById('resultContent')!.textContent = 'Error: ' + (error as Error).message;
+    window.electronAPI.removeProgressListener(progressListener);
+    resultContent.textContent = 'Error: ' + (error as Error).message;
     document.getElementById('resultUsage')!.textContent = '';
   } finally {
     executeBtn.disabled = false;
@@ -486,6 +484,19 @@ function renderApiKeys(): void {
   const container = document.getElementById('apiKeysList')!;
   container.innerHTML = '';
 
+  // Add Jamendo API Key first
+  const jamendoItem = document.createElement('div');
+  jamendoItem.className = 'api-key-item';
+  jamendoItem.innerHTML = `
+    <label>Jamendo API Key (for Music Download)</label>
+    <input type="password" 
+           id="jamendo-apikey" 
+           placeholder="Enter your Jamendo API client_id"
+           value="${settings!.jamendoApiKey || ''}">
+  `;
+  container.appendChild(jamendoItem);
+
+  // Add LLM Provider API Keys
   providers.forEach(provider => {
     const item = document.createElement('div');
     item.className = 'api-key-item';
@@ -515,6 +526,12 @@ async function saveSettings(): Promise<void> {
     }
   });
 
+  // Get Jamendo API key
+  const jamendoInput = document.getElementById('jamendo-apikey') as HTMLInputElement;
+  if (jamendoInput && jamendoInput.value) {
+    newSettings.jamendoApiKey = jamendoInput.value;
+  }
+
   try {
     await window.electronAPI.settings.save(newSettings);
     settings = newSettings;
@@ -534,17 +551,9 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
-function toggleSidebar(): void {
-  const sidebar = document.getElementById('sidebar');
-  if (sidebar) {
-    sidebar.classList.toggle('collapsed');
-  }
-}
-
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
   init();
 }
-

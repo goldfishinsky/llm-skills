@@ -29,6 +29,14 @@ const electronAPI = {
   settings: {
     get: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
     save: (settings: Settings): Promise<void> => ipcRenderer.invoke('settings:save', settings)
+  },
+
+  // Progress events
+  onProgress: (callback: (event: any, message: string) => void) => {
+    ipcRenderer.on('skill:progress', callback);
+  },
+  removeProgressListener: (callback: (event: any, message: string) => void) => {
+    ipcRenderer.removeListener('skill:progress', callback);
   }
 };
 

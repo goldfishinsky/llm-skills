@@ -76,8 +76,11 @@ function setupIPC(): void {
     return skillManager.deleteSkill(skillId);
   });
 
-  ipcMain.handle('skill:execute', async (_event, skillId: string, params: Record<string, any>) => {
-    return skillManager.executeSkill(skillId, params, llmManager);
+  ipcMain.handle('skill:execute', async (event, skillId: string, params: Record<string, any>) => {
+    const progressCallback = (message: string) => {
+      event.sender.send('skill:progress', message);
+    };
+    return skillManager.executeSkill(skillId, params, llmManager, progressCallback);
   });
 
   // LLM management

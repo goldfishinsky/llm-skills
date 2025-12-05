@@ -73,6 +73,7 @@ export class LLMManager {
         supportStreaming: true,
         models: [
           { id: 'glm-4', name: 'GLM-4', contextWindow: 128000, maxOutput: 4096 },
+          { id: 'glm-4-flash', name: 'GLM-4 Flash (Free)', contextWindow: 128000, maxOutput: 4096 },
           { id: 'glm-3-turbo', name: 'GLM-3 Turbo', contextWindow: 128000, maxOutput: 4096 }
         ]
       },
@@ -109,7 +110,8 @@ export class LLMManager {
       apiKeys: {},
       defaultProvider: 'openai',
       defaultModel: 'gpt-3.5-turbo',
-      theme: 'auto'
+      theme: 'auto',
+      jamendoApiKey: undefined
     };
   }
 
@@ -145,15 +147,16 @@ export class LLMManager {
     providerId: string,
     modelId: string,
     messages: Message[],
-    options?: ChatOptions
+    options?: ChatOptions,
+    apiKey?: string
   ): Promise<ChatResponse> {
     const provider = this.providers.get(providerId);
     if (!provider) {
       throw new Error(`Provider ${providerId} not found`);
     }
 
-    const apiKey = this.settings.apiKeys[providerId];
-    if (!apiKey) {
+    const finalApiKey = apiKey || this.settings.apiKeys[providerId];
+    if (!finalApiKey) {
       throw new Error(`API key not set for provider ${providerId}`);
     }
 
@@ -161,13 +164,13 @@ export class LLMManager {
       case 'openai':
       case 'deepseek':
       case 'moonshot':
-        return this.chatOpenAICompatible(provider, modelId, messages, apiKey, options);
+        return this.chatOpenAICompatible(provider, modelId, messages, finalApiKey, options);
       case 'anthropic':
-        return this.chatAnthropic(provider, modelId, messages, apiKey, options);
+        return this.chatAnthropic(provider, modelId, messages, finalApiKey, options);
       case 'google':
-        return this.chatGoogle(provider, modelId, messages, apiKey, options);
+        return this.chatGoogle(provider, modelId, messages, finalApiKey, options);
       case 'zhipu':
-        return this.chatZhipu(provider, modelId, messages, apiKey, options);
+        return this.chatZhipu(provider, modelId, messages, finalApiKey, options);
       default:
         throw new Error(`Provider ${providerId} not implemented`);
     }
@@ -190,7 +193,7 @@ export class LLMManager {
 
     const response = await client.post('/chat/completions', {
       model: modelId,
-      messages: messages,
+      messages: messages, // Messages now include system prompt if provided
       temperature: options?.temperature ?? 0.7,
       max_tokens: options?.maxTokens,
       top_p: options?.topP,

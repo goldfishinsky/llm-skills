@@ -73,40 +73,7 @@ export class SkillManager {
   }
 
   private getDefaultSkills(): Omit<Skill, 'id' | 'createdAt' | 'updatedAt'>[] {
-    return [
-      {
-        name: 'Music Downloader',
-        description: 'Find and download music based on a description',
-        prompt: 'You are a music assistant. Help the user find and download music matching their description.\n\nUser Request: {description}',
-        parameters: [
-          {
-            name: 'description',
-            type: 'string',
-            description: 'Description of the music to download',
-            required: true
-          }
-        ],
-        temperature: 0.7,
-        maxTokens: 1000,
-        tools: ['music_download']
-      },
-      {
-        name: 'Job Search',
-        description: 'Search for job listings on LinkedIn, Indeed, or Glassdoor based on location and time posted',
-        prompt: 'You are a job search assistant. Help the user find job listings matching their criteria.\\n\\nUser Request: {query}',
-        parameters: [
-          {
-            name: 'query',
-            type: 'string',
-            description: 'Job search query including location, platform, and other preferences',
-            required: true
-          }
-        ],
-        temperature: 0.5,
-        maxTokens: 2000,
-        tools: ['job_search']
-      }
-    ];
+    return [];
   }
 
   getAllSkills(): Skill[] {

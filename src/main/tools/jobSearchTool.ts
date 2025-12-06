@@ -111,225 +111,92 @@ export const jobSearchTool: Tool = {
     },
     required: ['city']
   },
-  execute: async (
-    { city = 'Vancouver', hours = 24, platform = 'linkedin', keywords, limit = 10, headless = false }: {
-      city?: string;
-      hours?: number;
-      platform?: string;
-      keywords?: string;
-      limit?: number;
-      headless?: boolean;
-    },
-    onProgress?: (message: string) => void
-  ) => {
+  execute: async function execute(args: unknown, onProgress?: (status: string) => void): Promise<string> {
     try {
-      const resultLimit = Math.min(Math.max(1, limit), 50);
-      
-      const progress = (msg: string) => {
-        console.log(msg);
-        if (onProgress) onProgress(msg);
-      };
+      // Parse and validate arguments
+      const params = args as { city?: string; hours?: number; platform?: string; keywords?: string; resultLimit?: number; headless?: boolean };
+      const {
+        city = 'San Francisco',
+        hours = 24,
+        platform = 'indeed',
+        keywords = '',
+        resultLimit = 10
+      } = params;
 
-      // Validate platform
       const platformKey = platform.toLowerCase() as keyof typeof PLATFORM_CONFIGS;
       if (!PLATFORM_CONFIGS[platformKey]) {
         return `Error: Unsupported platform "${platform}". Supported platforms: linkedin, indeed, glassdoor`;
       }
 
       const config = PLATFORM_CONFIGS[platformKey];
-      progress(`🔍 Searching ${config.name} for jobs in ${city} (posted within ${hours}h)...`);
-      progress(`🖥️  Browser mode: ${headless ? 'headless' : 'visible window (headed)'}`);
-
-      // Initialize MCP client for Playwright
-      // Note: Playwright MCP is headed (visible) by default
-      const mcpArgs = ['@playwright/mcp@latest'];
+      const progress = (msg: string) => onProgress?.(msg);
       
-      // Explicitly ensure headed mode for visibility
-      if (headless) {
-        mcpArgs.push('--headless');
-        progress('Running in headless mode');
-      } else {
-        // Force headed mode explicitly
-        progress('Running in HEADED mode (browser window should be visible)');
-        progress(`Command: npx ${mcpArgs.join(' ')}`);
-      }
-      
-      const mcpClient = new MCPClient({
-        command: 'npx',
-        args: mcpArgs
-      });
-
       try {
-        // Connect to MCP server
-        progress('🎭 Connecting to Playwright MCP server...');
-        await mcpClient.connect();
-        progress('✓ Connected to Playwright');
-
-        // List available tools for debugging
-        try {
-          const tools = await mcpClient.listTools();
-          progress(`📋 Available MCP tools: ${tools.map((t: any) => t.name).join(', ')}`);
-        } catch (e) {
-          progress('⚠️ Could not list tools');
-        }
-
-        // Build search URL
+        progress(`🔍 Searching ${config.name} for jobs in ${city} (posted within ${hours}h)...`);
+        
         const searchUrl = config.buildUrl(city, hours, keywords);
-        progress(`📍 Navigating to: ${searchUrl}`);
-
-        // Navigate to the search page
-        await mcpClient.callTool('playwright_navigate', {
-          url: searchUrl
+        progress(`📍 Target URL: ${searchUrl}`);
+        
+        // Initialize MCP client
+        const mcpClient = new MCPClient({
+          command: 'npx',
+          args: ['@playwright/mcp@latest'],
+          env: {}
         });
-
-        // Wait longer for page to load (especially for visible browser)
-        const waitTime = headless ? 3000 : 5000;
-        progress(`⏳ Waiting ${waitTime}ms for page to load...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-
-        // Debug: Get page info
-        progress('🔍 Inspecting page content...');
+        
         try {
-          const pageInfo = await mcpClient.callTool('playwright_execute', {
-            script: `
-              return JSON.stringify({
-                title: document.title,
-                url: window.location.href,
-                bodyText: document.body?.innerText?.substring(0, 500) || 'No body text',
-                jobCardCount: document.querySelectorAll('${config.selectors.jobCard}').length,
-                allJobElements: Array.from(document.querySelectorAll('[class*="job"]')).slice(0, 5).map(el => ({
-                  tag: el.tagName,
-                  classes: el.className,
-                  text: el.innerText?.substring(0, 100)
-                }))
-              });
-            `
+          await mcpClient.connect();
+          progress('✓ Connected to Playwright MCP');
+          
+          // Navigate to search page
+          await mcpClient.callTool('browser_navigate', { url: searchUrl });
+          progress('✓ Page loaded');
+          
+          // Wait a moment for content
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Extract jobs using MCP evaluate
+          const result = await mcpClient.callTool('browser_evaluate', {
+            expression: `JSON.stringify(
+              Array.from(document.querySelectorAll('${config.selectors.jobCard}')).slice(0, ${resultLimit}).map(card => ({
+                title: card.querySelector('${config.selectors.title}')?.getAttribute('title') || card.querySelector('${config.selectors.title}')?.textContent?.trim() || '',
+                company: card.querySelector('${config.selectors.company}')?.textContent?.trim() || '',
+                location: card.querySelector('${config.selectors.location}')?.textContent?.trim() || '',
+                link: (card.querySelector('${config.selectors.link}')?.getAttribute('href') || '').startsWith('http') 
+                  ? card.querySelector('${config.selectors.link}')?.getAttribute('href') 
+                  : 'https://www.${platform}.com' + (card.querySelector('${config.selectors.link}')?.getAttribute('href') || ''),
+                postedDate: card.querySelector('${config.selectors.date}')?.textContent?.trim() || ''
+              })).filter(job => job.title && job.company)
+            )`
           });
           
-          // Extract JSON from markdown response
-          let jsonText = pageInfo.content?.[0]?.text || '{}';
-          const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/) || 
-                           jsonText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            jsonText = jsonMatch[1] || jsonMatch[0];
+          // Parse result
+          let jobsText = result.content?.[0]?.text || '[]';
+          const jobs = JSON.parse(jobsText);
+          
+          progress(`✅ Found ${jobs.length} job(s)`);
+          
+          // Disconnect
+          await mcpClient.disconnect();
+          
+          // Format results
+          if (jobs.length === 0) {
+            return `No jobs found on ${config.name} for "${keywords || 'all positions'}" in ${city}`;
           }
           
-          const info = JSON.parse(jsonText.trim());
-          progress(`📄 Page Title: ${info.title}`);
-          progress(`🔗 Page URL: ${info.url}`);
-          progress(`🔢 Job cards found with selector '${config.selectors.jobCard}': ${info.jobCardCount}`);
+          const formattedJobs = jobs.map((job: any, i: number) => 
+            `${i + 1}. ${job.title}\n   Company: ${job.company}\n   Location: ${job.location}\n   Link: ${job.link}`
+          ).join('\n\n');
           
-          if (info.jobCardCount === 0) {
-            progress('⚠️ No job cards found with current selector. Showing elements with "job" in class name:');
-            info.allJobElements?.forEach((el: any, i: number) => {
-              progress(`  ${i + 1}. <${el.tag}> class="${el.classes.substring(0, 100)}"`);
-            });
-          }
-        } catch (e) {
-          console.error('Debug info error:', e);
-          progress('⚠️ Debug info failed (continuing anyway)');
+          return `✓ Found ${jobs.length} job(s) on ${config.name}:\n\n${formattedJobs}`;
+          
+        } finally {
+          await mcpClient.disconnect().catch(() => {});
         }
-
-        // Extract job listings using JavaScript
-        const extractScript = `
-          const jobs = [];
-          const cards = document.querySelectorAll('${config.selectors.jobCard}');
-          const limit = ${resultLimit};
-          
-          for (let i = 0; i < Math.min(cards.length, limit); i++) {
-            const card = cards[i];
-            try {
-              const titleEl = card.querySelector('${config.selectors.title}');
-              const companyEl = card.querySelector('${config.selectors.company}');
-              const locationEl = card.querySelector('${config.selectors.location}');
-              const linkEl = card.querySelector('${config.selectors.link}');
-              const dateEl = card.querySelector('${config.selectors.date}');
-              
-              if (titleEl && companyEl) {
-                jobs.push({
-                  title: titleEl.textContent?.trim() || '',
-                  company: companyEl.textContent?.trim() || '',
-                  location: locationEl?.textContent?.trim() || '',
-                  link: linkEl?.href || '',
-                  postedDate: dateEl?.textContent?.trim() || ''
-                });
-              }
-            } catch (e) {
-              console.error('Error extracting job:', e);
-            }
-          }
-          
-          return JSON.stringify(jobs);
-        `;
-
-        progress('📊 Extracting job listings...');
-        const result = await mcpClient.callTool('playwright_execute', {
-          script: extractScript
-        });
-
-        // Parse the results - MCP returns Markdown format, need to extract JSON
-        let jobs = [];
-        try {
-          // MCP may wrap result in markdown code blocks or text blocks
-          let jsonText = result.content?.[0]?.text || '[]';
-          
-          // Try to extract JSON from markdown format
-          // Format might be: ### Result\n```json\n{...}\n```
-          const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/) || 
-                           jsonText.match(/\{[\s\S]*\}/) ||
-                           jsonText.match(/\[[\s\S]*\]/);
-          
-          if (jsonMatch) {
-            jsonText = jsonMatch[1] || jsonMatch[0];
-          }
-          
-          jobs = JSON.parse(jsonText.trim());
-          progress(`✓ Parsed ${Array.isArray(jobs) ? jobs.length : 0} job(s) from response`);
-        } catch (e) {
-          console.error('Error parsing job results:', e);
-          console.error('Raw response:', result.content?.[0]?.text?.substring(0, 500));
-          progress(`⚠️ Failed to parse results. Raw response preview: ${result.content?.[0]?.text?.substring(0, 100)}`);
-          jobs = [];
-        }
-
-        progress(`✓ Found ${jobs.length} job listing(s)`);
-
-        // Format results
-        if (jobs.length === 0) {
-          return `No jobs found on ${config.name} for "${keywords || 'all positions'}" in ${city} (posted within ${hours}h).
-
-Possible reasons:
-- No recent job postings matching your criteria
-- The website structure may have changed
-- Try different search parameters or platform`;
-        }
-
-        const formattedJobs = jobs.map((job: any, index: number) => {
-          return `${index + 1}. ${job.title}
-   Company: ${job.company}
-   Location: ${job.location}
-   Posted: ${job.postedDate}
-   Link: ${job.link}`;
-        }).join('\n\n');
-
-        return `✓ Found ${jobs.length} job listing(s) on ${config.name} for "${keywords || 'all positions'}" in ${city}:
-
-${formattedJobs}
-
-Search parameters:
-- Location: ${city}
-- Posted within: ${hours} hours
-- Platform: ${config.name}${keywords ? `\n- Keywords: ${keywords}` : ''}`;
-
-      } finally {
-        // Always disconnect the MCP client
-        await mcpClient.disconnect();
-        progress('🔌 Disconnected from Playwright');
-      }
-    } catch (error) {
-      const errorMsg = (error as Error).message;
-      console.error('Job search error:', errorMsg);
-      return `Error searching for jobs: ${errorMsg}
+      } catch (error) {
+        const errorMsg = (error as Error).message;
+        console.error('Job search error:', errorMsg);
+        return `Error searching for jobs: ${errorMsg}
 
 Please ensure:
 1. @playwright/mcp is installed (npx handles this automatically)
@@ -337,6 +204,9 @@ Please ensure:
 3. The job platform is accessible from your location
 
 Try running: npx @playwright/mcp@latest --help`;
+      }
+    } catch (outerError) {
+      return `Fatal error: ${(outerError as Error).message}`;
     }
   }
 };

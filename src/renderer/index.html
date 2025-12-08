@@ -32,13 +32,52 @@
             <h1>My Skills</h1>
             <p>Manage and execute your LLM skills</p>
           </div>
-          <button id="newSkillBtn" class="btn btn-primary">
-            <span class="icon">+</span> New Skill
-          </button>
+          <div class="header-actions">
+            <button id="customSkillsBtn" class="btn btn-secondary" title="Custom Skills">
+              <span class="icon">🔧</span> Custom Skills
+            </button>
+            <button id="newSkillBtn" class="btn btn-primary">
+              <span class="icon">+</span> New Skill
+            </button>
+          </div>
         </div>
         
         <div id="skillsGrid" class="skills-grid">
           <!-- Skill Cards will be populated here -->
+        </div>
+      </div>
+
+      <!-- Custom Skills Panel -->
+      <div id="customSkillsPanel" class="custom-skills-panel hidden">
+        <div class="panel-header">
+          <div class="header-left">
+            <button id="closeCustomSkillsBtn" class="btn-icon" title="Back to Dashboard">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+            </button>
+            <h2>Custom Skills</h2>
+          </div>
+          <div class="header-actions">
+            <button id="reloadCustomSkillsBtn" class="btn btn-secondary">🔄 Reload</button>
+            <button id="openSkillsFolderBtn" class="btn btn-primary">📁 Open Folder</button>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <div class="info-box">
+            <h3>📋 How to Add Custom Skills</h3>
+            <p>1. Click "Open Folder" to access the skills directory</p>
+            <p>2. Create a new folder for your skill (e.g., <code>my-skill</code>)</p>
+            <p>3. Add a <code>SKILL.md</code> file with YAML frontmatter</p>
+            <p>4. Add your script file (Python, Node.js, or Shell)</p>
+            <p>5. Click "Reload" to load your new skill</p>
+          </div>
+
+          <h3>Loaded Skills</h3>
+          <div id="customSkillsList" class="custom-skills-list">
+            <!-- Custom skills will be listed here -->
+          </div>
         </div>
       </div>
 

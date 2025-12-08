@@ -106,3 +106,46 @@ export interface MCPToolCall {
   arguments: Record<string, any>;
 }
 
+// Custom Skills System Types
+
+export type CustomSkillRuntime = 'python' | 'node' | 'shell' | 'binary';
+export type CustomSkillParameterType = 'string' | 'number' | 'boolean' | 'file' | 'array';
+
+export interface CustomSkillParameter {
+  name: string;
+  type: CustomSkillParameterType;
+  required: boolean;
+  description: string;
+  default?: any;
+}
+
+export interface CustomSkill {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  runtime: CustomSkillRuntime;
+  script: string;
+  scriptPath: string;
+  skillPath: string;
+  dependencies?: string[];
+  parameters?: CustomSkillParameter[];
+  instructions?: string;
+  enabled: boolean;
+}
+
+export interface ScriptExecutionResult {
+  success: boolean;
+  output: string;
+  error?: string;
+  exitCode: number;
+  duration: number;
+}
+
+export interface CustomSkillsConfig {
+  skillsDirectory: string;
+  allowNetworkAccess: boolean;
+  allowedPaths: string[];
+  defaultTimeout: number; // in milliseconds
+  maxMemory: number; // in MB
+}

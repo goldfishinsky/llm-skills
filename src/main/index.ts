@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import { SkillManager } from './skillManager';
 import { LLMManager } from './llmManager';
-import { Skill, ChatOptions, Message, Settings } from './types';
+import { Skill, ChatOptions, Message, Settings, CustomSkill } from './types';
 
 let mainWindow: BrowserWindow | null;
 let skillManager: SkillManager;
@@ -107,6 +107,24 @@ function setupIPC(): void {
 
   ipcMain.handle('settings:save', async (_event, settings: Settings): Promise<void> => {
     return llmManager.saveSettings(settings);
+  });
+
+  // Custom Skills
+  ipcMain.handle('customSkills:getAll', async (): Promise<CustomSkill[]> => {
+    return skillManager.getCustomSkills();
+  });
+
+  ipcMain.handle('customSkills:reload', async (): Promise<void> => {
+    skillManager.reloadCustomSkills();
+  });
+
+  ipcMain.handle('customSkills:getDirectory', async (): Promise<string> => {
+    return skillManager.getCustomSkillsDirectory();
+  });
+
+  ipcMain.handle('customSkills:openDirectory', async (): Promise<void> => {
+    const dir = skillManager.getCustomSkillsDirectory();
+    shell.openPath(dir);
   });
 }
 

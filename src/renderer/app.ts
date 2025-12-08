@@ -57,10 +57,22 @@ interface SkillExecutionResult {
   };
 }
 
-// State management
+interface CustomSkill {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  runtime: string;
+  script: string;
+  scriptPath: string;
+  skillPath: string;
+  enabled: boolean;
+}
+
 // State management
 let currentSkill: Skill | null = null;
 let skills: Skill[] = [];
+let customSkills: CustomSkill[] = [];
 let providers: LLMProvider[] = [];
 let settings: Settings | null = null;
 
@@ -69,6 +81,7 @@ async function init(): Promise<void> {
   await loadProviders();
   await loadSettings();
   await loadSkills();
+  await loadCustomSkills();
   setupEventListeners();
   
   // Show dashboard by default
@@ -87,6 +100,10 @@ async function loadProviders(): Promise<void> {
 
 async function loadSettings(): Promise<void> {
   settings = await window.electronAPI.settings.get();
+}
+
+async function loadCustomSkills(): Promise<void> {
+  customSkills = await window.electronAPI.customSkills.getAll();
 }
 
 // Render functions
@@ -136,7 +153,48 @@ function showDashboard(): void {
   document.getElementById('skillsDashboard')!.classList.remove('hidden');
   document.getElementById('skillEditor')!.classList.add('hidden');
   document.getElementById('skillExecution')!.classList.add('hidden');
+  document.getElementById('customSkillsPanel')!.classList.add('hidden');
   currentSkill = null;
+}
+
+function showCustomSkillsPanel(): void {
+  document.getElementById('skillsDashboard')!.classList.add('hidden');
+  document.getElementById('skillEditor')!.classList.add('hidden');
+  document.getElementById('skillExecution')!.classList.add('hidden');
+  document.getElementById('customSkillsPanel')!.classList.remove('hidden');
+  
+  renderCustomSkillsList();
+}
+
+function renderCustomSkillsList(): void {
+  const container = document.getElementById('customSkillsList')!;
+  
+  if (customSkills.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>No custom skills found.</p>
+        <p>Click "Open Folder" to add your first skill!</p>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = customSkills.map(skill => `
+    <div class="custom-skill-item">
+      <div class="custom-skill-info">
+        <h4>${escapeHtml(skill.name)}</h4>
+        <p>${escapeHtml(skill.description)}</p>
+        <div class="custom-skill-meta">
+          <span>🏷️ v${skill.version}</span>
+          <span>⚙️ ${skill.runtime}</span>
+          <span>📄 ${skill.script || 'No script'}</span>
+        </div>
+      </div>
+      <div class="custom-skill-status ${skill.enabled ? 'enabled' : 'disabled'}">
+        ${skill.enabled ? '✓ Enabled' : '✗ Disabled'}
+      </div>
+    </div>
+  `).join('');
 }
 
 function showEditor(skill: Skill | null = null): void {
@@ -294,6 +352,18 @@ function setupEventListeners(): void {
   document.getElementById('saveSettingsBtn')!.addEventListener('click', saveSettings);
   
   document.getElementById('defaultProvider')!.addEventListener('change', updateDefaultModelSelect);
+  
+  // Custom Skills Panel
+  document.getElementById('customSkillsBtn')!.addEventListener('click', showCustomSkillsPanel);
+  document.getElementById('closeCustomSkillsBtn')!.addEventListener('click', showDashboard);
+  document.getElementById('reloadCustomSkillsBtn')!.addEventListener('click', async () => {
+    await window.electronAPI.customSkills.reload();
+    customSkills = await window.electronAPI.customSkills.getAll();
+    renderCustomSkillsList();
+  });
+  document.getElementById('openSkillsFolderBtn')!.addEventListener('click', () => {
+    window.electronAPI.customSkills.openDirectory();
+  });
 }
 
 async function saveSkill(): Promise<void> {

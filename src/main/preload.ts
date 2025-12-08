@@ -31,6 +31,14 @@ const electronAPI = {
     save: (settings: Settings): Promise<void> => ipcRenderer.invoke('settings:save', settings)
   },
 
+  // Custom Skills operations
+  customSkills: {
+    getAll: () => ipcRenderer.invoke('customSkills:getAll'),
+    reload: () => ipcRenderer.invoke('customSkills:reload'),
+    getDirectory: () => ipcRenderer.invoke('customSkills:getDirectory'),
+    openDirectory: () => ipcRenderer.invoke('customSkills:openDirectory')
+  },
+
   // Progress events
   onProgress: (callback: (event: any, message: string) => void) => {
     ipcRenderer.on('skill:progress', callback);

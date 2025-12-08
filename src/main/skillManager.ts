@@ -1,27 +1,73 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import { Skill, SkillExecutionResult, Tool } from './types';
+import { Skill, SkillExecutionResult, Tool, CustomSkill } from './types';
 import { musicDownloadTool } from './tools/musicTool';
 import { jobSearchTool } from './tools/jobSearchTool';
+import { loadCustomSkills, getCustomSkillsDirectory, createSampleSkill } from './customSkillsLoader';
+import { createCustomSkillTools } from './tools/customSkillTool';
 
 export class SkillManager {
   private skillsPath: string;
   private skills: Map<string, Skill>;
   private tools: Map<string, Tool>;
+  private customSkills: CustomSkill[];
 
   constructor() {
     const userDataPath = app.getPath('userData');
     this.skillsPath = path.join(userDataPath, 'skills.json');
     this.skills = new Map();
     this.tools = new Map();
+    this.customSkills = [];
     this.registerTools();
     this.loadSkills();
+    this.loadCustomSkills();
   }
 
   private registerTools(): void {
+    // Built-in tools
     this.tools.set(musicDownloadTool.id, musicDownloadTool);
     this.tools.set(jobSearchTool.id, jobSearchTool);
+  }
+
+  private loadCustomSkills(): void {
+    try {
+      // Create sample skill if no custom skills exist
+      const customSkillsDir = getCustomSkillsDirectory();
+      if (!fs.existsSync(customSkillsDir) || fs.readdirSync(customSkillsDir).length === 0) {
+        createSampleSkill();
+      }
+
+      // Load all custom skills
+      this.customSkills = loadCustomSkills();
+      console.log(`Loaded ${this.customSkills.length} custom skill(s)`);
+
+      // Convert to tools and register
+      const customTools = createCustomSkillTools(this.customSkills);
+      for (const tool of customTools) {
+        this.tools.set(tool.id, tool);
+        console.log(`Registered custom tool: ${tool.id}`);
+      }
+    } catch (error) {
+      console.error('Error loading custom skills:', error);
+    }
+  }
+
+  reloadCustomSkills(): void {
+    // Remove existing custom tools
+    for (const skill of this.customSkills) {
+      this.tools.delete(skill.id);
+    }
+    // Reload
+    this.loadCustomSkills();
+  }
+
+  getCustomSkills(): CustomSkill[] {
+    return this.customSkills;
+  }
+
+  getCustomSkillsDirectory(): string {
+    return getCustomSkillsDirectory();
   }
 
   private loadSkills(): void {

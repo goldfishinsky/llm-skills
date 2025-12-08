@@ -62,67 +62,158 @@ export const musicDownloadTool: Tool = {
         return `Error: yt-dlp is not accessible from Electron.\nPath tried: ${ytdlpPath}\nError: ${(error as Error).message}\n\nThis might be a PATH or permission issue. Try using absolute paths or check Electron sandbox settings.`;
       }
 
-      progress(`✓ Found yt-dlp, searching YouTube...`);
+      progress(`✓ Found yt-dlp, searching for music...`);
 
-      // Check if ffmpeg is installed
-      let hasFFmpeg = false;
-      try {
-        await execAsync('which ffmpeg');
-        hasFFmpeg = true;
-      } catch {
-        progress(`⚠️ ffmpeg not found - downloading as m4a instead of mp3`);
+    // Check if ffmpeg is installed
+    let hasFFmpeg = false;
+    try {
+      await execAsync('which ffmpeg');
+      hasFFmpeg = true;
+    } catch {
+      progress(`⚠️ ffmpeg not found - downloading as m4a instead of mp3`);
+    }
+
+    // Use ytsr (YouTube search API) instead of ytsearch which is being blocked
+    progress(`🔍 Searching YouTube for "${query}"...`);
+    
+    let videoUrls: string[] = [];
+    try {
+      // Use ytsr package for searching (需要先安装: npm install ytsr)
+      const ytsr = require('ytsr');
+      const searchResults = await ytsr(query, { limit: downloadCount });
+      
+      videoUrls = searchResults.items
+        .filter((item: any) => item.type === 'video')
+        .slice(0, downloadCount)
+        .map((item: any) => item.url);
+        
+      if (videoUrls.length === 0) {
+        throw new Error('No videos found');
       }
+      
+      progress(`✓ Found ${videoUrls.length} video(s)`);
+    } catch (searchError) {
+      return `Search failed: ${(searchError as Error).message}\n\nPlease ensure:\n1. You have internet connection\n2. YouTube is accessible\n3. Try a more specific search query`;
+    }
 
-      // Use ytsearch to search YouTube and download
-      const searchQuery = `ytsearch${downloadCount}:${query}`;
-      const outputTemplate = path.join(downloadsPath, '%(title)s.%(ext)s');
 
+    let downloadedFiles: Array<{title: string, path: string}> = [];
+  
+  // Download each video URL
+  progress(`⬇️ Downloading ${videoUrls.length} track(s)...`);
+  
+  for (let i = 0; i < videoUrls.length; i++) {
+    const url = videoUrls[i];
+    try {
+      // Use predictable temp filename pattern
+      const tempPrefix = `ytdl_temp_${Date.now()}_${i}`;
+      const outputTemplate = path.join(downloadsPath, `${tempPrefix}.%(ext)s`);
+      
       // Build command based on ffmpeg availability
       let command: string;
       if (hasFFmpeg) {
-        command = `${ytdlpPath} "${searchQuery}" --extract-audio --audio-format mp3 --audio-quality 0 --output "${outputTemplate}" --print "%(title)s" --no-playlist --max-downloads ${downloadCount} --ignore-errors`;
+        command = `${ytdlpPath} "${url}" --extract-audio --audio-format mp3 --audio-quality 0 --output "${outputTemplate}" --no-warnings --newline`;
       } else {
-        // Download best audio without conversion if ffmpeg is missing
-        command = `${ytdlpPath} "${searchQuery}" -f bestaudio --output "${outputTemplate}" --print "%(title)s" --no-playlist --max-downloads ${downloadCount} --ignore-errors`;
+        command = `${ytdlpPath} "${url}" -f bestaudio --output "${outputTemplate}" --no-warnings --newline`;
       }
-
-      progress(`⬇️ Downloading ${downloadCount} track(s)...`);
-
-      let stdout = '';
+      
+      progress(`  📥 Downloading ${i + 1}/${videoUrls.length}...`);
       
       try {
-        const result = await execAsync(command, {
-          maxBuffer: 50 * 1024 * 1024, // 50MB buffer
-          timeout: 5 * 60 * 1000 // 5 minutes timeout
+        await execAsync(command, {
+          maxBuffer: 50 * 1024 * 1024,
+          timeout: 5 * 60 * 1000
         });
-        stdout = result.stdout;
       } catch (execError: any) {
-        // yt-dlp may return non-zero exit code but still download files
-        // Check if we got stdout with titles
-        stdout = execError.stdout || '';
-        console.log(`yt-dlp exit code ${execError.code}, but checking stdout...`);
-        progress(`⚠️ yt-dlp exited with code ${execError.code}, checking results...`);
+        // Even if command exits with error, file might still be downloaded
+        console.log(`yt-dlp exited with code ${execError.code} for ${url}`);
       }
-
-      const downloadedTitles = stdout.trim().split('\n').filter(line => line && !line.startsWith('[') && !line.includes('ERROR'));
       
-      if (downloadedTitles.length === 0) {
-        return `No music found for query: "${query}". YouTube might be blocking downloads. Try:\n1. Using a VPN\n2. A different search query\n3. Downloading fewer tracks at once`;
-      }
-
-      progress(`✓ Download complete! Found ${downloadedTitles.length} track(s)`);
-
-      const resultLines = downloadedTitles.map((title, i) => 
-        `${i + 1}. ${title}`
-      );
-
-      let message = `✓ Successfully downloaded ${downloadedTitles.length} track(s) for "${query}":\n\n${resultLines.join('\n')}\n\nSaved to: ${downloadsPath}`;
+      // Find the downloaded file by glob pattern
+      const globPattern = path.join(downloadsPath, `${tempPrefix}.*`);
+      const glob = require('glob');
+      const matchedFiles = glob.sync(globPattern);
       
-      if (!hasFFmpeg) {
-        message += '\n\n⚠️ Note: Files are in m4a/webm format. For MP3 conversion, install ffmpeg:\nbrew install ffmpeg';
+      if (matchedFiles.length > 0) {
+        const tempFilepath = matchedFiles[0];
+        const tempExtension = path.extname(tempFilepath);
+        
+        // Get the actual video title from yt-dlp
+        try {
+          const titleCommand = `${ytdlpPath} "${url}" --get-title --no-warnings`;
+          const titleResult = await execAsync(titleCommand, { timeout: 10000 });
+          const videoTitle = titleResult.stdout.trim().split('\n')[0];
+          
+          // Sanitize title for filename (remove invalid characters)
+          const safeTitle = videoTitle
+            .replace(/[/\\?%*:|"<>]/g, '-')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .substring(0, 200); // Limit length
+          
+          // Rename file to proper title
+          const newFilepath = path.join(downloadsPath, `${safeTitle}${tempExtension}`);
+          
+          // Check if file with this name already exists
+          let finalPath = newFilepath;
+          let counter = 1;
+          while (matchedFiles[0] !== finalPath && glob.sync(finalPath).length > 0) {
+            finalPath = path.join(downloadsPath, `${safeTitle} (${counter})${tempExtension}`);
+            counter++;
+          }
+          
+          // Only rename if not already the target name
+          if (tempFilepath !== finalPath) {
+            const fsPromises = require('fs').promises;
+            await fsPromises.rename(tempFilepath, finalPath);
+          }
+          
+          downloadedFiles.push({ 
+            title: safeTitle,
+            path: finalPath 
+          });
+          progress(`  ✓ Downloaded: ${safeTitle}${tempExtension}`);
+        } catch (renameError) {
+          // If we can't get title or rename, keep temp name
+          console.error(`Failed to rename file:`, renameError);
+          const filename = path.basename(tempFilepath);
+          downloadedFiles.push({ 
+            title: filename,
+            path: tempFilepath 
+          });
+          progress(`  ✓ Downloaded: ${filename} (couldn't get proper title)`);
+        }
+      } else {
+        progress(`  ❌ Failed: no file found matching ${tempPrefix}.*`);
+        console.error(`No files found matching pattern: ${globPattern}`);
       }
+    } catch (error: any) {
+      progress(`  ❌ Error downloading track ${i + 1}: ${error.message}`);
+      console.error(`Failed to download ${url}:`, error);
+    }
+  }
+  
+  if (downloadedFiles.length === 0) {
+    return `❌ Failed to download any music for "${query}".\n\nPossible issues:\n1. YouTube may be blocking downloads\n2. Try using a VPN\n3. Check your internet connection\n4. Try a different search query`;
+  }
 
-      return message;
+  progress(`✓ Download complete! Successfully downloaded ${downloadedFiles.length}/${videoUrls.length} track(s)`);
+
+  const resultLines = downloadedFiles.map((file, i) => 
+    `${i + 1}. ${file.title}`
+  );
+
+  let message = `✓ Successfully downloaded ${downloadedFiles.length} track(s) for "${query}":\n\n${resultLines.join('\n')}\n\nSaved to: ${downloadsPath}`;
+  
+  if (!hasFFmpeg) {
+    message += '\n\n⚠️ Note: Files are in m4a/webm format. For MP3 conversion, install ffmpeg:\nbrew install ffmpeg';
+  }
+  
+  if (downloadedFiles.length < videoUrls.length) {
+    message += `\n\n⚠️ ${videoUrls.length - downloadedFiles.length} track(s) failed to download`;
+  }
+
+  return message;
     } catch (error) {
       const errorMsg = (error as Error).message;
       console.error('Music download error:', errorMsg);

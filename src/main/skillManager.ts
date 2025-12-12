@@ -2,8 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
 import { Skill, SkillExecutionResult, Tool, CustomSkill } from './types';
-import { musicDownloadTool } from './tools/musicTool';
-import { jobSearchTool } from './tools/jobSearchTool';
 import { loadCustomSkills, getCustomSkillsDirectory, createSampleSkill } from './customSkillsLoader';
 import { createCustomSkillTools } from './tools/customSkillTool';
 
@@ -26,8 +24,7 @@ export class SkillManager {
 
   private registerTools(): void {
     // Built-in tools
-    this.tools.set(musicDownloadTool.id, musicDownloadTool);
-    this.tools.set(jobSearchTool.id, jobSearchTool);
+    // Built-in tools are now loaded as custom skills
   }
 
   private loadCustomSkills(): void {
@@ -39,11 +36,43 @@ export class SkillManager {
       }
 
       // Load all custom skills
-      this.customSkills = loadCustomSkills();
+      // Include the source skills directory
+      const srcSkillsDir = path.join(app.getAppPath(), 'src', 'skills');
+      console.log(`Loading skills from: ${srcSkillsDir}`);
+      
+      this.customSkills = loadCustomSkills({
+        additionalDirectories: [srcSkillsDir]
+      });
       console.log(`Loaded ${this.customSkills.length} custom skill(s)`);
 
-      // Convert to tools and register
-      const customTools = createCustomSkillTools(this.customSkills);
+      // Separate prompt skills from tool skills
+      const promptSkills = this.customSkills.filter(s => s.runtime === 'prompt');
+      const toolSkills = this.customSkills.filter(s => s.runtime !== 'prompt');
+
+      // Register prompt skills as Skills
+      for (const customSkill of promptSkills) {
+        const skill: Skill = {
+          id: customSkill.id,
+          name: customSkill.name,
+          description: customSkill.description,
+          prompt: customSkill.instructions || '',
+          parameters: (customSkill.parameters || []).map(p => ({
+            name: p.name,
+            type: p.type === 'file' ? 'string' : p.type as any, // Map 'file' to 'string' for now
+            description: p.description,
+            required: p.required,
+            default: p.default
+          })),
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        
+        this.skills.set(skill.id, skill);
+        console.log(`Registered custom prompt skill: ${skill.id}`);
+      }
+
+      // Convert tool skills to tools and register
+      const customTools = createCustomSkillTools(toolSkills);
       for (const tool of customTools) {
         this.tools.set(tool.id, tool);
         console.log(`Registered custom tool: ${tool.id}`);
@@ -68,6 +97,10 @@ export class SkillManager {
 
   getCustomSkillsDirectory(): string {
     return getCustomSkillsDirectory();
+  }
+
+  getTools(): Tool[] {
+    return Array.from(this.tools.values());
   }
 
   private loadSkills(): void {

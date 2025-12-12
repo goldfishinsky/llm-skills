@@ -16,6 +16,7 @@ const DEFAULT_CONFIG: CustomSkillsConfig = {
   allowedPaths: [app.getPath('downloads'), app.getPath('documents'), app.getPath('temp')],
   defaultTimeout: 60000, // 1 minute
   maxMemory: 512, // 512 MB
+  additionalDirectories: [],
 };
 
 // YAML frontmatter parsing regex
@@ -72,7 +73,7 @@ function validateSkillMetadata(metadata: SkillMetadata): string[] {
     errors.push('description must be 1024 characters or less');
   }
 
-  const validRuntimes: CustomSkillRuntime[] = ['python', 'node', 'shell', 'binary'];
+  const validRuntimes: CustomSkillRuntime[] = ['python', 'node', 'shell', 'binary', 'prompt'];
   if (metadata.runtime && !validRuntimes.includes(metadata.runtime)) {
     errors.push(`runtime must be one of: ${validRuntimes.join(', ')}`);
   }
@@ -140,7 +141,7 @@ function loadSkillFromDirectory(skillDir: string): CustomSkill | null {
       description: metadata.description,
       version: metadata.version || '1.0.0',
       runtime: metadata.runtime || 'shell',
-      script: metadata.script || '',
+      script: metadata.script,
       scriptPath,
       skillPath: skillDir,
       dependencies: metadata.dependencies,
@@ -148,6 +149,11 @@ function loadSkillFromDirectory(skillDir: string): CustomSkill | null {
       instructions,
       enabled: true,
     };
+
+    // Default to prompt runtime if no script is provided
+    if (!skill.script && !skill.runtime) {
+      skill.runtime = 'prompt';
+    }
 
     return skill;
   } catch (error) {
@@ -171,16 +177,42 @@ export function loadCustomSkills(config: Partial<CustomSkillsConfig> = {}): Cust
   }
 
   const skills: CustomSkill[] = [];
-  const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      const skillDir = path.join(skillsDir, entry.name);
-      const skill = loadSkillFromDirectory(skillDir);
-      if (skill) {
-        skills.push(skill);
-        console.log(`Loaded custom skill: ${skill.name}`);
+  
+  // Helper to load from a specific directory
+  const loadFromDir = (baseDir: string) => {
+    if (!fs.existsSync(baseDir)) return;
+    
+    const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const skillDir = path.join(baseDir, entry.name);
+        // Check if already loaded (avoid duplicates by name)
+        const existing = skills.find(s => s.name === entry.name);
+        if (existing) {
+          console.log(`Skipping duplicate skill: ${entry.name} in ${baseDir}`);
+          continue;
+        }
+        
+        const skill = loadSkillFromDirectory(skillDir);
+        if (skill) {
+          skills.push(skill);
+          console.log(`Loaded custom skill: ${skill.name}`);
+        }
       }
+    }
+  };
+
+  // 1. Load from default directory
+  if (!fs.existsSync(skillsDir)) {
+    fs.mkdirSync(skillsDir, { recursive: true });
+    console.log(`Created skills directory: ${skillsDir}`);
+  }
+  loadFromDir(skillsDir);
+
+  // 2. Load from additional directories
+  if (finalConfig.additionalDirectories) {
+    for (const dir of finalConfig.additionalDirectories) {
+      loadFromDir(dir);
     }
   }
 

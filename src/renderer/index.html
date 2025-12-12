@@ -18,40 +18,43 @@
         </div>
         <div class="spacer"></div>
         <div class="top-right-actions">
+           <button id="customSkillsBtn" class="btn-icon" title="Custom Skills">
+             <span class="icon">🔧</span>
+           </button>
            <div class="user-profile" id="userProfileBtn">
              <div class="avatar">U</div>
-             <span class="username">Settings</span>
            </div>
         </div>
       </div>
 
-      <!-- Skills Dashboard (Default View) -->
-      <div id="skillsDashboard" class="skills-dashboard">
-        <div class="dashboard-header">
-          <div class="header-text">
-            <h1>My Skills</h1>
-            <p>Manage and execute your LLM skills</p>
-          </div>
-          <div class="header-actions">
-            <button id="customSkillsBtn" class="btn btn-secondary" title="Custom Skills">
-              <span class="icon">🔧</span> Custom Skills
-            </button>
-            <button id="newSkillBtn" class="btn btn-primary">
-              <span class="icon">+</span> New Skill
-            </button>
+      <!-- Chat Interface -->
+      <div id="chatInterface" class="chat-interface">
+        <div id="chatMessages" class="chat-messages">
+          <div class="message system">
+            <div class="message-content">
+              <p>Hello! I can help you with various tasks using your skills. Try asking me to download music or search for jobs.</p>
+            </div>
           </div>
         </div>
         
-        <div id="skillsGrid" class="skills-grid">
-          <!-- Skill Cards will be populated here -->
+        <div class="chat-input-area">
+          <div class="input-wrapper">
+            <textarea id="chatInput" placeholder="Type a message..." rows="1"></textarea>
+            <button id="sendMessageBtn" class="btn-icon primary">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Custom Skills Panel -->
+      <!-- Custom Skills Panel (Hidden by default) -->
       <div id="customSkillsPanel" class="custom-skills-panel hidden">
         <div class="panel-header">
           <div class="header-left">
-            <button id="closeCustomSkillsBtn" class="btn-icon" title="Back to Dashboard">
+            <button id="closeCustomSkillsBtn" class="btn-icon" title="Back to Chat">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M19 12H5M12 19l-7-7 7-7"/>
               </svg>
@@ -77,99 +80,6 @@
           <h3>Loaded Skills</h3>
           <div id="customSkillsList" class="custom-skills-list">
             <!-- Custom skills will be listed here -->
-          </div>
-        </div>
-      </div>
-
-      <!-- Skill Editor (Hidden by default) -->
-      <div id="skillEditor" class="skill-editor hidden">
-        <div class="editor-header">
-          <div class="header-left">
-            <button id="closeEditorBtn" class="btn-icon" title="Back to Dashboard">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-              </svg>
-            </button>
-            <input type="text" id="skillName" placeholder="Skill Name" class="skill-name-input">
-          </div>
-          <div class="editor-actions">
-            <button id="deleteSkillBtn" class="btn-icon danger" title="Delete Skill">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-            <button id="saveSkillBtn" class="btn btn-primary">Save Skill</button>
-          </div>
-        </div>
-
-        <div class="editor-body">
-          <div class="form-group">
-            <label for="skillDescription">Description</label>
-            <textarea id="skillDescription" placeholder="Describe what this skill does..." rows="2"></textarea>
-          </div>
-
-          <div class="form-group">
-            <label for="skillPrompt">Prompt Template</label>
-            <textarea id="skillPrompt" placeholder="Enter your prompt template. Use {paramName} for parameters..." rows="8"></textarea>
-          </div>
-
-          <div class="form-group">
-            <label>Parameters</label>
-            <div id="parametersList" class="parameters-list"></div>
-            <button id="addParameterBtn" class="btn btn-secondary">+ Add Parameter</button>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label for="skillProvider">Provider</label>
-              <select id="skillProvider"></select>
-            </div>
-            <div class="form-group">
-              <label for="skillModel">Model</label>
-              <select id="skillModel"></select>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label for="skillTemperature">Temperature</label>
-              <input type="number" id="skillTemperature" min="0" max="2" step="0.1" value="0.7">
-            </div>
-            <div class="form-group">
-              <label for="skillMaxTokens">Max Tokens</label>
-              <input type="number" id="skillMaxTokens" min="1" max="128000" value="2000">
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="skillApiKey">API Key (Optional - Overrides Global Setting)</label>
-            <input type="password" id="skillApiKey" placeholder="sk-...">
-          </div>
-        </div>
-      </div>
-
-      <!-- Skill Execution (Hidden by default) -->
-      <div id="skillExecution" class="skill-execution hidden">
-        <div class="execution-header">
-          <div class="header-left">
-            <button id="closeExecutionBtn" class="btn-icon" title="Back to Dashboard">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-              </svg>
-            </button>
-            <h2 id="executionSkillName">Skill Name</h2>
-          </div>
-        </div>
-
-        <div class="execution-body">
-          <div class="execution-inputs" id="executionInputs"></div>
-          <button id="executeBtn" class="btn btn-primary">Execute</button>
-
-          <div id="executionResult" class="execution-result hidden">
-            <h3>Result:</h3>
-            <div id="resultContent" class="result-content"></div>
-            <div id="resultUsage" class="result-usage"></div>
           </div>
         </div>
       </div>

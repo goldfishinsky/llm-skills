@@ -39,12 +39,20 @@ const electronAPI = {
     openDirectory: () => ipcRenderer.invoke('customSkills:openDirectory')
   },
 
+  // Chat operations
+  chat: {
+    send: (message: string, history: Message[]) => ipcRenderer.invoke('chat:send', message, history)
+  },
+
   // Progress events
   onProgress: (callback: (event: any, message: string) => void) => {
     ipcRenderer.on('skill:progress', callback);
   },
   removeProgressListener: (callback: (event: any, message: string) => void) => {
     ipcRenderer.removeListener('skill:progress', callback);
+  },
+  onToolExecution: (callback: (event: any, data: any) => void) => {
+    ipcRenderer.on('tool:execution', callback);
   }
 };
 

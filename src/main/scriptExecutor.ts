@@ -133,6 +133,7 @@ function buildCommand(
     SKILL_NAME: skill.name,
     SKILL_PATH: skill.skillPath,
     ALLOWED_PATHS: config.allowedPaths.join(':'),
+    DOWNLOADS_PATH: require('electron').app.getPath('downloads'),
   };
 
   // Add parameters as environment variables
@@ -146,27 +147,27 @@ function buildCommand(
   switch (skill.runtime) {
     case 'python':
       command = 'python3';
-      args = [skill.script, ...buildCliArgs(params)];
+      args = [skill.script!, ...buildCliArgs(params)];
       break;
 
     case 'node':
       command = 'node';
-      args = [skill.script, ...buildCliArgs(params)];
+      args = [skill.script!, ...buildCliArgs(params)];
       break;
 
     case 'shell':
       command = 'bash';
-      args = [skill.script, ...Object.values(params).map(String)];
+      args = [skill.script!, ...Object.values(params).map(String)];
       break;
 
     case 'binary':
-      command = `./${skill.script}`;
+      command = `./${skill.script!}`;
       args = buildCliArgs(params);
       break;
 
     default:
       command = 'bash';
-      args = [skill.script];
+      args = [skill.script || ''];
   }
 
   return { command, args, env };
@@ -211,7 +212,7 @@ export async function checkDependencies(skill: CustomSkill): Promise<{
   const missing: string[] = [];
 
   for (const dep of skill.dependencies) {
-    const isInstalled = await isDependencyInstalled(dep, skill.runtime);
+    const isInstalled = await isDependencyInstalled(dep, skill.runtime || 'shell');
     if (!isInstalled) {
       missing.push(dep);
     }

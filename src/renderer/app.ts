@@ -46,17 +46,6 @@ interface Settings {
   jamendoApiKey?: string;
 }
 
-interface SkillExecutionResult {
-  success: boolean;
-  result?: string;
-  error?: string;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-}
-
 interface CustomSkill {
   id: string;
   name: string;
@@ -67,33 +56,28 @@ interface CustomSkill {
   scriptPath: string;
   skillPath: string;
   enabled: boolean;
+  instructions?: string; // For prompt skills
+  parameters?: any[];
 }
 
 // State management
-let currentSkill: Skill | null = null;
-let skills: Skill[] = [];
 let customSkills: CustomSkill[] = [];
 let providers: LLMProvider[] = [];
 let settings: Settings | null = null;
+let chatHistory: Array<{role: 'user' | 'assistant' | 'system', content: string}> = [];
 
 // Initialize app
 async function init(): Promise<void> {
   await loadProviders();
   await loadSettings();
-  await loadSkills();
   await loadCustomSkills();
   setupEventListeners();
   
-  // Show dashboard by default
-  showDashboard();
+  // Initialize chat
+  appendMessage('system', 'Hello! I can help you with various tasks using your skills. Try asking me to download music or search for jobs.');
 }
 
 // Load data
-async function loadSkills(): Promise<void> {
-  skills = await window.electronAPI.skill.getAll();
-  renderSkillsDashboard();
-}
-
 async function loadProviders(): Promise<void> {
   providers = await window.electronAPI.llm.getProviders();
 }
@@ -106,64 +90,85 @@ async function loadCustomSkills(): Promise<void> {
   customSkills = await window.electronAPI.customSkills.getAll();
 }
 
-// Render functions
-function renderSkillsDashboard(): void {
-  const skillsGrid = document.getElementById('skillsGrid')!;
-  skillsGrid.innerHTML = '';
-
-  if (skills.length === 0) {
-    skillsGrid.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">
-        <p>No skills yet. Click "New Skill" to create one.</p>
-      </div>
-    `;
-    return;
-  }
-
-  skills.forEach(skill => {
-    const card = document.createElement('div');
-    card.className = 'skill-card';
-    card.innerHTML = `
-      <div class="skill-card-header">
-        <h3>${escapeHtml(skill.name)}</h3>
-      </div>
-      <p>${escapeHtml(skill.description || 'No description')}</p>
-      <div class="skill-card-actions">
-        <button class="btn btn-primary execute-skill-btn" data-id="${skill.id}">Execute</button>
-        <button class="btn btn-secondary edit-skill-btn" data-id="${skill.id}">Edit</button>
-      </div>
-    `;
-    
-    // Add event listeners for buttons
-    card.querySelector('.execute-skill-btn')!.addEventListener('click', (e) => {
-      e.stopPropagation();
-      showExecution(skill);
-    });
-    
-    card.querySelector('.edit-skill-btn')!.addEventListener('click', (e) => {
-      e.stopPropagation();
-      showEditor(skill);
-    });
-
-    skillsGrid.appendChild(card);
-  });
-}
-
-function showDashboard(): void {
-  document.getElementById('skillsDashboard')!.classList.remove('hidden');
-  document.getElementById('skillEditor')!.classList.add('hidden');
-  document.getElementById('skillExecution')!.classList.add('hidden');
-  document.getElementById('customSkillsPanel')!.classList.add('hidden');
-  currentSkill = null;
-}
-
-function showCustomSkillsPanel(): void {
-  document.getElementById('skillsDashboard')!.classList.add('hidden');
-  document.getElementById('skillEditor')!.classList.add('hidden');
-  document.getElementById('skillExecution')!.classList.add('hidden');
-  document.getElementById('customSkillsPanel')!.classList.remove('hidden');
+// Chat Functions
+function appendMessage(role: 'user' | 'assistant' | 'system', content: string): void {
+  const chatMessages = document.getElementById('chatMessages')!;
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `message ${role}`;
   
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'message-content';
+  
+  // Simple markdown-like parsing (can be improved)
+  let formattedContent = escapeHtml(content)
+    .replace(/\n/g, '<br>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.*?)`/g, '<code>$1</code>');
+
+  contentDiv.innerHTML = formattedContent;
+  messageDiv.appendChild(contentDiv);
+  chatMessages.appendChild(messageDiv);
+  
+  // Scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  chatHistory.push({ role, content });
+}
+
+function appendToolExecution(toolName: string, status: string, result?: string): HTMLElement {
+  const chatMessages = document.getElementById('chatMessages')!;
+  const toolDiv = document.createElement('div');
+  toolDiv.className = 'tool-execution';
+  
+  toolDiv.innerHTML = `
+    <div class="tool-header">
+      <span>⚙️ ${escapeHtml(toolName)}</span>
+      <span>${escapeHtml(status)}</span>
+    </div>
+    ${result ? `<div class="tool-content">${escapeHtml(result)}</div>` : ''}
+  `;
+  
+  chatMessages.appendChild(toolDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return toolDiv;
+}
+
+async function sendMessage(): Promise<void> {
+  const input = document.getElementById('chatInput') as HTMLTextAreaElement;
+  const message = input.value.trim();
+  
+  if (!message) return;
+  
+  input.value = '';
+  input.style.height = 'auto'; // Reset height
+  
+  appendMessage('user', message);
+  
+  const sendBtn = document.getElementById('sendMessageBtn') as HTMLButtonElement;
+  sendBtn.disabled = true;
+  
+  try {
+    // Send to backend
+    const response = await window.electronAPI.chat.send(message, chatHistory);
+    appendMessage('assistant', response);
+  } catch (error) {
+    appendMessage('system', `Error: ${(error as Error).message}`);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+// UI Functions
+function showCustomSkillsPanel(): void {
+  document.getElementById('chatInterface')!.classList.add('hidden');
+  document.getElementById('customSkillsPanel')!.classList.remove('hidden');
   renderCustomSkillsList();
+}
+
+function showChatInterface(): void {
+  document.getElementById('customSkillsPanel')!.classList.add('hidden');
+  document.getElementById('chatInterface')!.classList.remove('hidden');
 }
 
 function renderCustomSkillsList(): void {
@@ -197,165 +202,34 @@ function renderCustomSkillsList(): void {
   `).join('');
 }
 
-function showEditor(skill: Skill | null = null): void {
-  currentSkill = skill;
-
-  document.getElementById('skillsDashboard')!.classList.add('hidden');
-  document.getElementById('skillExecution')!.classList.add('hidden');
-  document.getElementById('skillEditor')!.classList.remove('hidden');
-
-  if (skill) {
-    (document.getElementById('skillName') as HTMLInputElement).value = skill.name;
-    (document.getElementById('skillDescription') as HTMLTextAreaElement).value = skill.description;
-    (document.getElementById('skillPrompt') as HTMLTextAreaElement).value = skill.prompt;
-    (document.getElementById('skillTemperature') as HTMLInputElement).value = String(skill.temperature ?? 0.7);
-    (document.getElementById('skillMaxTokens') as HTMLInputElement).value = String(skill.maxTokens ?? 2000);
-    (document.getElementById('skillApiKey') as HTMLInputElement).value = skill.apiKey || '';
-    
-    renderProviderSelect();
-    (document.getElementById('skillProvider') as HTMLSelectElement).value = skill.provider || settings!.defaultProvider;
-    updateModelSelect();
-    (document.getElementById('skillModel') as HTMLSelectElement).value = skill.model || settings!.defaultModel;
-    
-    renderParameters(skill.parameters);
-    (document.getElementById('deleteSkillBtn') as HTMLButtonElement).style.display = 'flex';
-  } else {
-    (document.getElementById('skillName') as HTMLInputElement).value = '';
-    (document.getElementById('skillDescription') as HTMLTextAreaElement).value = '';
-    (document.getElementById('skillPrompt') as HTMLTextAreaElement).value = '';
-    (document.getElementById('skillTemperature') as HTMLInputElement).value = '0.7';
-    (document.getElementById('skillMaxTokens') as HTMLInputElement).value = '2000';
-    (document.getElementById('skillApiKey') as HTMLInputElement).value = '';
-    
-    renderProviderSelect();
-    (document.getElementById('skillProvider') as HTMLSelectElement).value = settings!.defaultProvider;
-    updateModelSelect();
-    
-    renderParameters([]);
-    (document.getElementById('deleteSkillBtn') as HTMLButtonElement).style.display = 'none';
-  }
-}
-
-function showExecution(skill: Skill): void {
-  currentSkill = skill;
-
-  document.getElementById('skillsDashboard')!.classList.add('hidden');
-  document.getElementById('skillEditor')!.classList.add('hidden');
-  document.getElementById('skillExecution')!.classList.remove('hidden');
-
-  document.getElementById('executionSkillName')!.textContent = skill.name;
-  document.getElementById('executionResult')!.classList.add('hidden');
-
-  renderExecutionInputs(skill.parameters);
-}
-
-function renderProviderSelect(): void {
-  const select = document.getElementById('skillProvider') as HTMLSelectElement;
-  select.innerHTML = providers.map(p => 
-    `<option value="${p.id}">${p.name}</option>`
-  ).join('');
-}
-
-function updateModelSelect(): void {
-  const providerId = (document.getElementById('skillProvider') as HTMLSelectElement).value;
-  const provider = providers.find(p => p.id === providerId);
-  const select = document.getElementById('skillModel') as HTMLSelectElement;
-  
-  if (provider) {
-    select.innerHTML = provider.models.map(m => 
-      `<option value="${m.id}">${m.name}</option>`
-    ).join('');
-  }
-}
-
-function renderParameters(parameters: SkillParameter[] = []): void {
-  const container = document.getElementById('parametersList')!;
-  container.innerHTML = '';
-
-  parameters.forEach((param, index) => {
-    const paramItem = createParameterItem(param, index);
-    container.appendChild(paramItem);
-  });
-}
-
-function createParameterItem(param: SkillParameter, index: number): HTMLDivElement {
-  const div = document.createElement('div');
-  div.className = 'parameter-item';
-  div.innerHTML = `
-    <div class="parameter-header">
-      <strong>Parameter ${index + 1}</strong>
-      <button class="btn-icon danger" onclick="removeParameter(${index})" title="Remove Parameter">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-        </svg>
-      </button>
-    </div>
-    <div class="parameter-fields">
-      <input type="text" placeholder="Name" value="${param.name || ''}" data-field="name">
-      <select data-field="type">
-        <option value="string" ${param.type === 'string' ? 'selected' : ''}>String</option>
-        <option value="number" ${param.type === 'number' ? 'selected' : ''}>Number</option>
-        <option value="boolean" ${param.type === 'boolean' ? 'selected' : ''}>Boolean</option>
-      </select>
-      <input type="text" placeholder="Description" value="${param.description || ''}" data-field="description" style="grid-column: 1 / -1;">
-      <label style="display: flex; align-items: center; gap: 8px;">
-        <input type="checkbox" ${param.required ? 'checked' : ''} data-field="required">
-        Required
-      </label>
-    </div>
-  `;
-  return div;
-}
-
-function renderExecutionInputs(parameters: SkillParameter[]): void {
-  const container = document.getElementById('executionInputs')!;
-  container.innerHTML = '';
-
-  parameters.forEach(param => {
-    const formGroup = document.createElement('div');
-    formGroup.className = 'form-group';
-    
-    let inputHtml: string;
-    if (param.type === 'boolean') {
-      inputHtml = `<input type="checkbox" id="param-${param.name}" ${param.required ? 'required' : ''}>`;
-    } else if (param.type === 'number') {
-      inputHtml = `<input type="number" id="param-${param.name}" placeholder="${param.description}" ${param.required ? 'required' : ''}>`;
-    } else {
-      inputHtml = `<textarea id="param-${param.name}" placeholder="${param.description}" rows="3" ${param.required ? 'required' : ''}></textarea>`;
-    }
-
-    formGroup.innerHTML = `
-      <label for="param-${param.name}">${param.name}${param.required ? ' *' : ''}</label>
-      ${inputHtml}
-    `;
-    container.appendChild(formGroup);
-  });
-}
-
 // Event listeners
 function setupEventListeners(): void {
-  document.getElementById('newSkillBtn')!.addEventListener('click', () => showEditor());
+  // Chat input
+  const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  
+  // Auto-resize textarea
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = chatInput.scrollHeight + 'px';
+  });
+
+  document.getElementById('sendMessageBtn')!.addEventListener('click', sendMessage);
+  
+  // Settings
   document.getElementById('userProfileBtn')!.addEventListener('click', showSettings);
-  
-  document.getElementById('saveSkillBtn')!.addEventListener('click', saveSkill);
-  document.getElementById('deleteSkillBtn')!.addEventListener('click', deleteSkill);
-  document.getElementById('closeEditorBtn')!.addEventListener('click', showDashboard);
-  
-  document.getElementById('addParameterBtn')!.addEventListener('click', addParameter);
-  document.getElementById('skillProvider')!.addEventListener('change', updateModelSelect);
-  
-  document.getElementById('executeBtn')!.addEventListener('click', executeSkill);
-  document.getElementById('closeExecutionBtn')!.addEventListener('click', showDashboard);
-  
   document.getElementById('closeSettingsBtn')!.addEventListener('click', closeSettings);
   document.getElementById('saveSettingsBtn')!.addEventListener('click', saveSettings);
-  
   document.getElementById('defaultProvider')!.addEventListener('change', updateDefaultModelSelect);
-  
+
   // Custom Skills Panel
   document.getElementById('customSkillsBtn')!.addEventListener('click', showCustomSkillsPanel);
-  document.getElementById('closeCustomSkillsBtn')!.addEventListener('click', showDashboard);
+  document.getElementById('closeCustomSkillsBtn')!.addEventListener('click', showChatInterface);
   document.getElementById('reloadCustomSkillsBtn')!.addEventListener('click', async () => {
     await window.electronAPI.customSkills.reload();
     customSkills = await window.electronAPI.customSkills.getAll();
@@ -364,164 +238,14 @@ function setupEventListeners(): void {
   document.getElementById('openSkillsFolderBtn')!.addEventListener('click', () => {
     window.electronAPI.customSkills.openDirectory();
   });
-}
-
-async function saveSkill(): Promise<void> {
-  const name = (document.getElementById('skillName') as HTMLInputElement).value.trim();
-  if (!name) {
-    alert('Please enter a skill name');
-    return;
-  }
-
-  const parameters = getParametersFromForm();
   
-  const provider = (document.getElementById('skillProvider') as HTMLSelectElement).value;
-  const model = (document.getElementById('skillModel') as HTMLSelectElement).value;
-  const temperature = parseFloat((document.getElementById('skillTemperature') as HTMLInputElement).value);
-  const maxTokens = parseInt((document.getElementById('skillMaxTokens') as HTMLInputElement).value);
-  const apiKey = (document.getElementById('skillApiKey') as HTMLInputElement).value;
-
-  const skillData = {
-    name,
-    description: (document.getElementById('skillDescription') as HTMLTextAreaElement).value.trim(),
-    prompt: (document.getElementById('skillPrompt') as HTMLTextAreaElement).value.trim(),
-    parameters,
-    provider,
-    model,
-    temperature,
-    maxTokens,
-    apiKey: apiKey || undefined, // Only include if not empty
-  };
-
-  try {
-    if (currentSkill) {
-      await window.electronAPI.skill.update(currentSkill.id, skillData);
-    } else {
-      await window.electronAPI.skill.create(skillData);
-    }
-    await loadSkills();
-    showDashboard();
-  } catch (error) {
-    alert('Error saving skill: ' + (error as Error).message);
-  }
-}
-
-async function deleteSkill(): Promise<void> {
-  if (!currentSkill) return;
-  
-  if (confirm(`Are you sure you want to delete "${currentSkill.name}"?`)) {
-    try {
-      await window.electronAPI.skill.delete(currentSkill.id);
-      await loadSkills();
-      showDashboard();
-    } catch (error) {
-      alert('Error deleting skill: ' + (error as Error).message);
-    }
-  }
-}
-
-function addParameter(): void {
-  const parameters = getParametersFromForm();
-  parameters.push({
-    name: '',
-    type: 'string',
-    description: '',
-    required: false
+  // Listen for tool execution events from backend
+  window.electronAPI.onToolExecution((event: any, data: { tool: string, status: string, result?: string }) => {
+    appendToolExecution(data.tool, data.status, data.result);
   });
-  renderParameters(parameters);
 }
 
-// Export to window for inline onclick handlers
-(window as any).removeParameter = function(index: number): void {
-  const parameters = getParametersFromForm();
-  parameters.splice(index, 1);
-  renderParameters(parameters);
-};
-
-function getParametersFromForm(): SkillParameter[] {
-  const paramItems = document.querySelectorAll('.parameter-item');
-  const parameters: SkillParameter[] = [];
-
-  paramItems.forEach(item => {
-    const param: SkillParameter = {
-      name: (item.querySelector('[data-field="name"]') as HTMLInputElement).value.trim(),
-      type: (item.querySelector('[data-field="type"]') as HTMLSelectElement).value as 'string' | 'number' | 'boolean',
-      description: (item.querySelector('[data-field="description"]') as HTMLInputElement).value.trim(),
-      required: (item.querySelector('[data-field="required"]') as HTMLInputElement).checked
-    };
-    if (param.name) {
-      parameters.push(param);
-    }
-  });
-
-  return parameters;
-}
-
-async function executeSkill(): Promise<void> {
-  if (!currentSkill) return;
-
-  const params: Record<string, any> = {};
-  currentSkill.parameters.forEach(param => {
-    const element = document.getElementById(`param-${param.name}`) as HTMLInputElement | HTMLTextAreaElement;
-    if (element) {
-      if (param.type === 'boolean') {
-        params[param.name] = (element as HTMLInputElement).checked;
-      } else if (param.type === 'number') {
-        params[param.name] = parseFloat(element.value);
-      } else {
-        params[param.name] = element.value;
-      }
-    }
-  });
-
-  const executeBtn = document.getElementById('executeBtn') as HTMLButtonElement;
-  executeBtn.disabled = true;
-  executeBtn.textContent = 'Executing...';
-
-  // Show result area and clear previous content
-  const resultElement = document.getElementById('executionResult')!;
-  const resultContent = document.getElementById('resultContent')!;
-  resultElement.classList.remove('hidden');
-  resultContent.textContent = '⏳ Starting execution...';
-
-  // Listen for progress updates
-  const progressListener = (_event: any, message: string) => {
-    resultContent.textContent += '\n' + message;
-  };
-  window.electronAPI.onProgress(progressListener);
-
-  try {
-    const result: SkillExecutionResult = await window.electronAPI.skill.execute(currentSkill.id, params);
-    
-    // Remove progress listener
-    window.electronAPI.removeProgressListener(progressListener);
-    
-    if (result.success) {
-      resultContent.textContent = result.result || '';
-      if (result.usage) {
-        document.getElementById('resultUsage')!.innerHTML = `
-          <strong>Token Usage:</strong> 
-          Prompt: ${result.usage.promptTokens} | 
-          Completion: ${result.usage.completionTokens} | 
-          Total: ${result.usage.totalTokens}
-        `;
-      } else {
-        document.getElementById('resultUsage')!.textContent = '';
-      }
-    } else {
-      resultContent.textContent = 'Error: ' + result.error;
-      document.getElementById('resultUsage')!.textContent = '';
-    }
-  } catch (error) {
-    window.electronAPI.removeProgressListener(progressListener);
-    resultContent.textContent = 'Error: ' + (error as Error).message;
-    document.getElementById('resultUsage')!.textContent = '';
-  } finally {
-    executeBtn.disabled = false;
-    executeBtn.textContent = 'Execute';
-  }
-}
-
+// Settings Functions (Reused)
 async function showSettings(): Promise<void> {
   document.getElementById('settingsModal')!.classList.remove('hidden');
   

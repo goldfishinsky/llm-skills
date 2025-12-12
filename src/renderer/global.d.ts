@@ -21,6 +21,18 @@ declare global {
         get: () => Promise<any>;
         save: (settings: any) => Promise<void>;
       };
+      customSkills: {
+        getAll: () => Promise<any[]>;
+        reload: () => Promise<void>;
+        getDirectory: () => Promise<string>;
+        openDirectory: () => Promise<void>;
+      };
+      chat: {
+        send: (message: string, history: any[]) => Promise<string>;
+      };
+      onToolExecution: (callback: (event: any, data: any) => void) => void;
+      onProgress: (callback: (event: any, message: string) => void) => void;
+      removeProgressListener: (callback: (event: any, message: string) => void) => void;
     };
   }
 }

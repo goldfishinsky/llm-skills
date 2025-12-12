@@ -126,5 +126,95 @@ function setupIPC(): void {
     const dir = skillManager.getCustomSkillsDirectory();
     shell.openPath(dir);
   });
+
+  // Chat with Tools
+  ipcMain.handle('chat:send', async (event, message: string, history: Message[]) => {
+    const settings = llmManager.getSettings();
+    const provider = settings.defaultProvider;
+    const model = settings.defaultModel;
+
+    // Prepare tools
+    const tools = skillManager.getTools();
+    const toolDefinitions = tools.map(t => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters
+    }));
+
+    const systemPrompt = `You are a helpful AI assistant. You have access to the following tools:
+${JSON.stringify(toolDefinitions, null, 2)}
+
+To use a tool, you MUST respond with ONLY a JSON object in this format:
+{"tool": "tool_name", "parameters": {...}}
+
+If you don't need to use a tool, just respond normally.
+If the user asks to download music, use the 'download_music' tool.
+If the user asks to find jobs, use the 'search_jobs' tool.
+`;
+
+    // Construct messages
+    const messages: Message[] = [
+      { role: 'system', content: systemPrompt },
+      ...history.filter(m => m.role !== 'system'), // Filter out previous system messages if any
+      { role: 'user', content: message }
+    ];
+
+    // Chat Loop
+    let response = await llmManager.chat(provider, model, messages);
+    let content = response.content;
+
+    // Check for tool call
+    try {
+      // Simple JSON extraction (can be improved)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const potentialJson = jsonMatch[0];
+        const toolCall = JSON.parse(potentialJson);
+        
+        if (toolCall.tool && toolCall.parameters) {
+          const toolName = toolCall.tool;
+          const toolParams = toolCall.parameters;
+          
+          // Notify frontend
+          event.sender.send('tool:execution', { 
+            tool: toolName, 
+            status: 'Executing...', 
+          });
+
+          const tool = tools.find(t => t.name === toolName);
+          if (tool) {
+            const progressCallback = (msg: string) => {
+               event.sender.send('tool:execution', { 
+                tool: toolName, 
+                status: msg 
+              });
+            };
+
+            const result = await tool.execute(toolParams, progressCallback);
+            
+            // Notify frontend of result
+            event.sender.send('tool:execution', { 
+              tool: toolName, 
+              status: 'Completed',
+              result: result
+            });
+
+            // Feed result back to LLM
+            messages.push({ role: 'assistant', content: content });
+            messages.push({ role: 'user', content: `Tool Execution Result: ${result}\n\nPlease summarize the result for me.` });
+            
+            const finalResponse = await llmManager.chat(provider, model, messages);
+            return finalResponse.content;
+          } else {
+            return `Error: Tool ${toolName} not found.`;
+          }
+        }
+      }
+    } catch (e) {
+      // Not a tool call, just return content
+    }
+
+    return content;
+  });
 }
 

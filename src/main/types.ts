@@ -108,7 +108,7 @@ export interface MCPToolCall {
 
 // Custom Skills System Types
 
-export type CustomSkillRuntime = 'python' | 'node' | 'shell' | 'binary';
+export type CustomSkillRuntime = 'python' | 'node' | 'shell' | 'binary' | 'prompt';
 export type CustomSkillParameterType = 'string' | 'number' | 'boolean' | 'file' | 'array';
 
 export interface CustomSkillParameter {
@@ -124,9 +124,9 @@ export interface CustomSkill {
   name: string;
   description: string;
   version: string;
-  runtime: CustomSkillRuntime;
-  script: string;
-  scriptPath: string;
+  runtime?: CustomSkillRuntime;
+  script?: string;
+  scriptPath?: string;
   skillPath: string;
   dependencies?: string[];
   parameters?: CustomSkillParameter[];
@@ -144,6 +144,7 @@ export interface ScriptExecutionResult {
 
 export interface CustomSkillsConfig {
   skillsDirectory: string;
+  additionalDirectories?: string[];
   allowNetworkAccess: boolean;
   allowedPaths: string[];
   defaultTimeout: number; // in milliseconds

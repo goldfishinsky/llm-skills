@@ -11,7 +11,7 @@ const execAsync = promisify(exec);
 // Get parameters from environment variables
 const query = process.env.PARAM_QUERY;
 const count = parseInt(process.env.PARAM_COUNT || '1', 10);
-const downloadsPath = process.env.DOWNLOADS_PATH || process.cwd(); // Fallback if not provided
+const downloadsPath = process.env.DOWNLOADS_PATH || require('os').homedir() + '/Downloads';
 
 async function main() {
   if (!query) {
@@ -23,18 +23,33 @@ async function main() {
   
   console.log(`🔍 Searching for "${query}"...`);
 
-  // Check for yt-dlp
+  // Try to find yt-dlp
   let ytdlpPath = 'yt-dlp';
+  const commonPaths = [
+    '/opt/homebrew/bin/yt-dlp',
+    '/usr/local/bin/yt-dlp',
+    '/usr/bin/yt-dlp'
+  ];
+
   try {
     const { stdout } = await execAsync('which yt-dlp');
     ytdlpPath = stdout.trim();
   } catch (e) {
-    // Try common paths
-    if (fs.existsSync('/opt/homebrew/bin/yt-dlp')) {
-      ytdlpPath = '/opt/homebrew/bin/yt-dlp';
-    } else if (fs.existsSync('/usr/local/bin/yt-dlp')) {
-      ytdlpPath = '/usr/local/bin/yt-dlp';
+    for (const p of commonPaths) {
+      if (fs.existsSync(p)) {
+        ytdlpPath = p;
+        break;
+      }
     }
+  }
+
+  // Check if yt-dlp works
+  try {
+    await execAsync(`"${ytdlpPath}" --version`);
+    console.log(`✓ Using yt-dlp at: ${ytdlpPath}`);
+  } catch (error) {
+    console.error(`Error: yt-dlp not found or not working.\n${error.message}`);
+    process.exit(1);
   }
 
   // Check ffmpeg
@@ -88,14 +103,12 @@ async function main() {
     try {
       await execAsync(command, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 });
       
-      // Find downloaded file
       const matchedFiles = glob.sync(path.join(downloadsPath, `${tempPrefix}.*`));
       if (matchedFiles.length > 0) {
         const tempFilepath = matchedFiles[0];
         const tempExtension = path.extname(tempFilepath);
         
-        // Get title
-        let safeTitle = `music_${Date.now()}_${i}`;
+        let safeTitle = '';
         try {
           const { stdout } = await execAsync(`"${ytdlpPath}" "${url}" --get-title --no-warnings`);
           safeTitle = stdout.trim()
@@ -103,25 +116,22 @@ async function main() {
             .replace(/\s+/g, ' ')
             .trim()
             .substring(0, 200);
-        } catch (e) {}
-
-        const finalPath = path.join(downloadsPath, `${safeTitle}${tempExtension}`);
-        
-        // Rename
-        if (tempFilepath !== finalPath) {
-            // Check if exists
-            if (fs.existsSync(finalPath)) {
-                const altPath = path.join(downloadsPath, `${safeTitle}_${Date.now()}${tempExtension}`);
-                fs.renameSync(tempFilepath, altPath);
-                downloadedFiles.push({ title: safeTitle, path: altPath });
-            } else {
-                fs.renameSync(tempFilepath, finalPath);
-                downloadedFiles.push({ title: safeTitle, path: finalPath });
-            }
-        } else {
-            downloadedFiles.push({ title: safeTitle, path: finalPath });
+        } catch (e) {
+          safeTitle = `music_${Date.now()}_${i}`;
         }
-        console.log(`  ✓ Downloaded: ${safeTitle}`);
+
+        let finalPath = path.join(downloadsPath, `${safeTitle}${tempExtension}`);
+        
+        // Handle name collisions
+        let counter = 1;
+        while (fs.existsSync(finalPath) && finalPath !== tempFilepath) {
+          finalPath = path.join(downloadsPath, `${safeTitle}_(${counter})${tempExtension}`);
+          counter++;
+        }
+        
+        fs.renameSync(tempFilepath, finalPath);
+        downloadedFiles.push({ title: safeTitle, path: finalPath });
+        console.log(`  ✓ Downloaded: ${path.basename(finalPath)}`);
       }
     } catch (error) {
       console.error(`  ❌ Failed to download ${url}: ${error.message}`);
@@ -133,8 +143,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`✓ Successfully downloaded ${downloadedFiles.length} track(s)`);
-  console.log(JSON.stringify(downloadedFiles)); // Output JSON for structured parsing if needed
+  console.log(`✓ Successfully downloaded ${downloadedFiles.length} track(s) to ${downloadsPath}`);
 }
 
 main().catch(err => {

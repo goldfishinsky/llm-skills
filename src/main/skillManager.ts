@@ -11,9 +11,16 @@ export class SkillManager {
   private tools: Map<string, Tool>;
   private customSkills: CustomSkill[];
 
-  constructor() {
-    const userDataPath = app.getPath('userData');
-    this.skillsPath = path.join(userDataPath, 'skills.json');
+  constructor(userDataPath?: string) {
+    if (!userDataPath) {
+      if (app) {
+        userDataPath = app.getPath('userData');
+      } else {
+        userDataPath = path.join(process.cwd(), 'userData_mock');
+      }
+    }
+    
+    this.skillsPath = path.join(userDataPath!, 'skills.json');
     this.skills = new Map();
     this.tools = new Map();
     this.customSkills = [];
@@ -36,8 +43,16 @@ export class SkillManager {
       }
 
       // Load all custom skills
+      // Load all custom skills
       // Include the source skills directory
-      const srcSkillsDir = path.join(app.getAppPath(), 'src', 'skills');
+      let appPath = ''; 
+      if (app) {
+        appPath = app.getAppPath();
+      } else {
+        appPath = process.cwd();
+      }
+      
+      const srcSkillsDir = path.join(appPath, 'src', 'skills');
       console.log(`Loading skills from: ${srcSkillsDir}`);
       
       this.customSkills = loadCustomSkills({

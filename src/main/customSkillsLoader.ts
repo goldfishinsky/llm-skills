@@ -10,10 +10,17 @@ import { app } from 'electron';
 import { CustomSkill, CustomSkillParameter, CustomSkillRuntime, CustomSkillsConfig } from './types';
 
 // Default configuration
+const getPath = (name: any) => {
+  if (app) {
+    return app.getPath(name);
+  }
+  return path.join(process.cwd(), name === 'userData' ? 'userData_mock' : 'temp_mock');
+};
+
 const DEFAULT_CONFIG: CustomSkillsConfig = {
-  skillsDirectory: path.join(app.getPath('userData'), 'custom_skills'),
+  skillsDirectory: '', // Set in constructor or lazily
   allowNetworkAccess: false,
-  allowedPaths: [app.getPath('downloads'), app.getPath('documents'), app.getPath('temp')],
+  allowedPaths: [],
   defaultTimeout: 60000, // 1 minute
   maxMemory: 512, // 512 MB
   additionalDirectories: [],
@@ -167,6 +174,15 @@ function loadSkillFromDirectory(skillDir: string): CustomSkill | null {
  */
 export function loadCustomSkills(config: Partial<CustomSkillsConfig> = {}): CustomSkill[] {
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
+  
+  // Lazy load defaults
+  if (!finalConfig.skillsDirectory) {
+    finalConfig.skillsDirectory = path.join(getPath('userData'), 'custom_skills');
+  }
+  if (!finalConfig.allowedPaths || finalConfig.allowedPaths.length === 0) {
+    finalConfig.allowedPaths = [getPath('downloads'), getPath('documents'), getPath('temp')];
+  }
+
   const skillsDir = finalConfig.skillsDirectory;
 
   // Ensure skills directory exists
@@ -224,6 +240,9 @@ export function loadCustomSkills(config: Partial<CustomSkillsConfig> = {}): Cust
  * Get the custom skills directory path
  */
 export function getCustomSkillsDirectory(): string {
+  if (!DEFAULT_CONFIG.skillsDirectory) {
+    DEFAULT_CONFIG.skillsDirectory = path.join(getPath('userData'), 'custom_skills');
+  }
   return DEFAULT_CONFIG.skillsDirectory;
 }
 

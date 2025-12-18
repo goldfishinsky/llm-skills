@@ -115,21 +115,65 @@ function appendMessage(role: 'user' | 'assistant' | 'system', content: string): 
   chatHistory.push({ role, content });
 }
 
+let lastToolExecution: { id: string, element: HTMLElement } | null = null;
+
 function appendToolExecution(toolName: string, status: string, result?: string): HTMLElement {
   const chatMessages = document.getElementById('chatMessages')!;
+  
+  // Check if we can update the last tool execution
+  if (lastToolExecution && lastToolExecution.id === toolName && status !== 'Executing...') {
+    const toolDiv = lastToolExecution.element;
+    const statusSpan = toolDiv.querySelector('.tool-header span:last-child');
+    if (statusSpan) {
+      statusSpan.textContent = status === 'Completed' ? 'Completed' : 'Running...';
+    }
+
+    let contentDiv = toolDiv.querySelector('.tool-content');
+    if (!contentDiv) {
+      contentDiv = document.createElement('div');
+      contentDiv.className = 'tool-content';
+      toolDiv.appendChild(contentDiv);
+    }
+
+    // Append new log line or result
+    if (status !== 'Completed' && status !== 'Executing...') {
+      const newLine = document.createElement('div');
+      newLine.textContent = status;
+      contentDiv.appendChild(newLine);
+    } else if (result) {
+       const resultBlock = document.createElement('div');
+       resultBlock.style.marginTop = '8px';
+       resultBlock.style.fontWeight = 'bold';
+       resultBlock.textContent = `Result: ${result}`;
+       contentDiv.appendChild(resultBlock);
+    }
+    
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return toolDiv;
+  }
+
+  // Create new tool execution block
   const toolDiv = document.createElement('div');
   toolDiv.className = 'tool-execution';
   
   toolDiv.innerHTML = `
     <div class="tool-header">
       <span>⚙️ ${escapeHtml(toolName)}</span>
-      <span>${escapeHtml(status)}</span>
+      <span>${status}</span>
     </div>
     ${result ? `<div class="tool-content">${escapeHtml(result)}</div>` : ''}
   `;
   
   chatMessages.appendChild(toolDiv);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  // Update reference if this is a new execution start
+  if (status === 'Executing...') {
+    lastToolExecution = { id: toolName, element: toolDiv };
+  } else if (status === 'Completed') {
+    lastToolExecution = null;
+  }
+  
   return toolDiv;
 }
 

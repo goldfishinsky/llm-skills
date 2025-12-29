@@ -28,6 +28,17 @@ export async function executeScript(
 
   progress(`Starting execution...`);
 
+  // Handle prompt-only skills
+  if (skill.runtime === 'prompt') {
+    return {
+      success: true,
+      output: skill.instructions || 'This is a prompt-only skill. Please refer to satisfy the request using the knowledge provided in SKILL.md.',
+      error: undefined,
+      exitCode: 0,
+      duration: Date.now() - startTime,
+    };
+  }
+
   // Validate script path
   if (!skill.scriptPath || !fs.existsSync(skill.scriptPath)) {
     return {

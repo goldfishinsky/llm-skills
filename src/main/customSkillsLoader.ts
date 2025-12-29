@@ -147,7 +147,7 @@ function loadSkillFromDirectory(skillDir: string): CustomSkill | null {
       name: metadata.name,
       description: metadata.description,
       version: metadata.version || '1.0.0',
-      runtime: metadata.runtime || 'shell',
+      runtime: metadata.runtime || (metadata.script ? 'shell' : 'prompt'),
       script: metadata.script,
       scriptPath,
       skillPath: skillDir,
@@ -156,11 +156,6 @@ function loadSkillFromDirectory(skillDir: string): CustomSkill | null {
       instructions,
       enabled: true,
     };
-
-    // Default to prompt runtime if no script is provided
-    if (!skill.script && !skill.runtime) {
-      skill.runtime = 'prompt';
-    }
 
     return skill;
   } catch (error) {

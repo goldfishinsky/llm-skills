@@ -283,10 +283,93 @@ function setupEventListeners(): void {
     window.electronAPI.customSkills.openDirectory();
   });
   
-  // Listen for tool execution events from backend
+  // Skill Selector
+  document.getElementById('skillsMenuBtn')!.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSkillsMenu();
+  });
+  
+  document.addEventListener('click', () => {
+    document.getElementById('skillsMenu')!.classList.add('hidden');
+  });
+
+  // Load tools
   window.electronAPI.onToolExecution((event: any, data: { tool: string, status: string, result?: string }) => {
     appendToolExecution(data.tool, data.status, data.result);
   });
+}
+
+function toggleSkillsMenu(): void {
+  const menu = document.getElementById('skillsMenu')!;
+  const isHidden = menu.classList.contains('hidden');
+  
+  if (isHidden) {
+    // Refresh list in case of changes
+    renderSkillsMenu();
+    menu.classList.remove('hidden');
+  } else {
+    menu.classList.add('hidden');
+  }
+}
+
+function renderSkillsMenu(): void {
+  const menu = document.getElementById('skillsMenu')!;
+  
+  if (customSkills.length === 0) {
+    menu.innerHTML = '<div class="skill-menu-item empty">No skills available</div>';
+    return;
+  }
+  
+  // Sort enabled skills first
+  const sortedSkills = [...customSkills].sort((a, b) => {
+    if (a.enabled === b.enabled) return a.name.localeCompare(b.name);
+    return a.enabled ? -1 : 1;
+  });
+
+  menu.innerHTML = sortedSkills.map(skill => `
+    <div class="skill-menu-item ${!skill.enabled ? 'disabled' : ''}" 
+         data-skill="${skill.name}"
+         title="${skill.description}">
+      <span class="skill-icon">⚡</span>
+      <span class="skill-name">${skill.name}</span>
+      ${!skill.enabled ? '<span class="skill-tag">Disabled</span>' : ''}
+    </div>
+  `).join('');
+  
+  // Add listeners
+  menu.querySelectorAll('.skill-menu-item').forEach(item => {
+    if (item.classList.contains('disabled')) return;
+    
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const skillName = (item as HTMLElement).dataset.skill;
+      if (skillName) {
+        selectSkill(skillName);
+        menu.classList.add('hidden');
+      }
+    });
+  });
+}
+
+function selectSkill(skillName: string): void {
+  const input = document.getElementById('chatInput') as HTMLTextAreaElement;
+  // Insert at cursor or append
+  const tag = ` @[${skillName}] `;
+  
+  if (input.selectionStart || input.selectionStart === 0) {
+    const startPos = input.selectionStart;
+    const endPos = input.selectionEnd;
+    input.value = input.value.substring(0, startPos)
+      + tag
+      + input.value.substring(endPos, input.value.length);
+    input.selectionStart = startPos + tag.length;
+    input.selectionEnd = startPos + tag.length;
+  } else {
+    input.value += tag;
+  }
+  
+  input.focus();
+  input.dispatchEvent(new Event('input')); // Trigger auto-resize
 }
 
 // Settings Functions (Reused)

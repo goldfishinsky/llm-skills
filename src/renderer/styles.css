@@ -796,6 +796,71 @@ body {
   align-self: flex-end;
 }
 
+
+/* Skill Selector */
+.skill-selector-container {
+  position: relative;
+}
+
+.skills-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 12px;
+  background-color: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 8px 0;
+}
+
+.skill-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 14px;
+}
+
+.skill-menu-item:hover {
+  background-color: var(--bg-tertiary);
+}
+
+.skill-menu-item.empty {
+  color: var(--text-secondary);
+  justify-content: center;
+  font-style: italic;
+  cursor: default;
+}
+
+.skill-menu-item.empty:hover {
+  background-color: transparent;
+}
+
+.skill-menu-item.disabled {
+  opacity: 0.6;
+}
+
+.skill-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.skill-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: var(--bg-secondary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
 /* Tool Execution Styles in Chat */
 .tool-execution {
   background-color: #f8fafc;
